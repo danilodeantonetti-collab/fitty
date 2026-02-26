@@ -30,6 +30,7 @@ export default function Dashboard() {
     const [nickname, setNickname] = useState("Athlete");
     const [streak, setStreak] = useState(0);
     const [totalSessions, setTotalSessions] = useState(0);
+    const [customWorkouts, setCustomWorkouts] = useState<{ id: string; name: string }[]>([]);
 
     useEffect(() => {
         const load = async () => {
@@ -42,13 +43,16 @@ export default function Dashboard() {
                 setTotalSessions(sessions.length);
                 setStreak(calcStreak(sessions.map(s => s.date)));
             }
+            // Load custom workouts
+            const { data: customs } = await supabase.from('custom_workouts').select('id, name').eq('user_id', user.id).order('created_at', { ascending: false });
+            if (customs) setCustomWorkouts(customs);
         };
         load();
     }, []);
 
-    const workouts = [
-        { id: "tag-a", name: "TAG A", description: "Squats · Deadlifts · Pull-ups · Incline Press", accent: "from-accent/20 to-accent/5" },
-        { id: "tag-b", name: "TAG B", description: "Squats · Bench Press · Rows · Overhead Press", accent: "from-blue-500/20 to-blue-500/5" },
+    const defaultWorkouts = [
+        { id: "tag-a", name: "TAG A", description: "Squats · Deadlifts · Pull-ups · Incline Press", accent: "from-accent/20 to-accent/5", isCustom: false },
+        { id: "tag-b", name: "TAG B", description: "Squats · Bench Press · Rows · Overhead Press", accent: "from-blue-500/20 to-blue-500/5", isCustom: false },
     ];
 
     return (
@@ -63,7 +67,8 @@ export default function Dashboard() {
             <main className="mx-auto max-w-lg px-6 pt-10">
                 <div className="mb-8 animate-in fade-in slide-in-from-left-4 duration-700">
                     <h2 className="text-4xl font-bold tracking-tight text-foreground">
-                        Hallo <span className="text-accent italic">{nickname},</span><br />W\u00e4hle dein Workout
+                        Hallo <span className="text-accent italic">{nickname},</span><br />
+                        <span>W&auml;hle dein Workout</span>
                     </h2>
                     <p className="mt-2 text-muted text-sm">Ready for your next session?</p>
                 </div>
@@ -73,7 +78,7 @@ export default function Dashboard() {
                     <div className="rounded-2xl border border-card-border bg-card-border/20 p-4 flex items-center gap-3">
                         <span className="text-3xl">{streak >= 4 ? "🔥" : streak >= 2 ? "⚡" : "💪"}</span>
                         <div>
-                            <p className="text-2xl font-black text-foreground">{streak} <span className="text-sm font-bold text-muted">Wochen</span></p>
+                            <p className="text-2xl font-black text-foreground">{streak} <span className="text-sm font-bold text-muted">Wo.</span></p>
                             <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Streak</p>
                         </div>
                     </div>
@@ -87,10 +92,9 @@ export default function Dashboard() {
                 </div>
 
                 <div className="grid gap-6">
-                    {workouts.map((workout, index) => (
+                    {defaultWorkouts.map((workout, index) => (
                         <Link key={workout.id} href={`/workout/${workout.id}`}
-                            className={`group relative overflow-hidden rounded-2xl border border-card-border bg-gradient-to-br ${workout.accent} p-6 transition-all hover:scale-[1.02] active:scale-[0.98] animate-in fade-in slide-in-from-bottom-6 duration-700`}
-                            style={{ animationDelay: `${index * 100}ms` }}>
+                            className={`group relative overflow-hidden rounded-2xl border border-card-border bg-gradient-to-br ${workout.accent} p-6 transition-all hover:scale-[1.02] active:scale-[0.98]`}>
                             <div className="relative z-10 flex flex-col gap-2">
                                 <span className="text-xs font-bold tracking-widest text-accent uppercase">Workout Plan</span>
                                 <h3 className="text-3xl font-black tracking-tighter text-foreground group-hover:text-accent transition-colors">{workout.name}</h3>
@@ -104,6 +108,29 @@ export default function Dashboard() {
                             </div>
                         </Link>
                     ))}
+
+                    {/* Custom workouts */}
+                    {customWorkouts.map((w) => (
+                        <Link key={w.id} href={`/workout/custom/${w.id}`}
+                            className="group relative overflow-hidden rounded-2xl border border-card-border border-dashed bg-card-border/10 p-6 transition-all hover:scale-[1.02] active:scale-[0.98]">
+                            <div className="flex flex-col gap-2">
+                                <span className="text-xs font-bold tracking-widest text-muted uppercase">Mein Plan</span>
+                                <h3 className="text-3xl font-black tracking-tighter text-foreground group-hover:text-accent transition-colors">{w.name}</h3>
+                            </div>
+                            <div className="mt-4 flex items-center justify-end">
+                                <div className="rounded-full bg-foreground p-2 text-background transition-transform group-hover:translate-x-1">
+                                    <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
+                                </div>
+                            </div>
+                        </Link>
+                    ))}
+
+                    {/* Create new workout */}
+                    <Link href="/workout/create"
+                        className="group flex items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-card-border p-6 text-muted transition-all hover:border-accent hover:text-accent">
+                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 4v16m8-8H4" /></svg>
+                        <span className="text-sm font-black uppercase tracking-widest">Eigenes Workout erstellen</span>
+                    </Link>
                 </div>
             </main>
 
