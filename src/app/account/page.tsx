@@ -11,6 +11,32 @@ export default function AccountPage() {
     const [profile, setProfile] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState({ sessions: 0, totalVolume: 0 });
+    const [darkMode, setDarkMode] = useState(true);
+    const [notifEnabled, setNotifEnabled] = useState(false);
+    const [notifSupported, setNotifSupported] = useState(false);
+
+    useEffect(() => {
+        // Theme init
+        const saved = localStorage.getItem('fitty_theme') || 'dark';
+        setDarkMode(saved === 'dark');
+        document.documentElement.setAttribute('data-theme', saved);
+        // Notif check
+        setNotifSupported('Notification' in window);
+        setNotifEnabled(Notification.permission === 'granted');
+    }, []);
+
+    const toggleTheme = () => {
+        const next = darkMode ? 'light' : 'dark';
+        setDarkMode(!darkMode);
+        localStorage.setItem('fitty_theme', next);
+        document.documentElement.setAttribute('data-theme', next);
+    };
+
+    const enableNotifications = async () => {
+        const perm = await Notification.requestPermission();
+        setNotifEnabled(perm === 'granted');
+        if (perm === 'granted') new Notification('Fitty', { body: 'Super! Wir erinnern dich wenn du 3 Tage nicht trainiert hast 💪', icon: '/icon.svg' });
+    };
 
     useEffect(() => {
         const load = async () => {
@@ -19,11 +45,17 @@ export default function AccountPage() {
             setUser(user);
             const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
             if (profileData) setProfile(profileData);
-            const { data } = await supabase.from('sessions').select('id, sets(weight, reps)').eq('user_id', user.id);
+            const { data } = await supabase.from('sessions').select('id, date, sets(weight, reps)').eq('user_id', user.id);
             if (data) {
                 let vol = 0;
-                data.forEach((s: any) => s.sets.forEach((set: any) => { vol += (set.weight||0)*(set.reps||0); }));
+                data.forEach((s: any) => s.sets.forEach((set: any) => { vol += (set.weight || 0) * (set.reps || 0); }));
                 setStats({ sessions: data.length, totalVolume: vol });
+                // Check inactivity: if last session was > 3 days ago, send notification
+                if (Notification.permission === 'granted' && data.length > 0) {
+                    const lastDate = new Date(Math.max(...data.map((s: any) => new Date(s.date).getTime())));
+                    const daysSince = (Date.now() - lastDate.getTime()) / (1000 * 60 * 60 * 24);
+                    if (daysSince > 3) new Notification('Fitty 💪', { body: `${Math.floor(daysSince)} Tage ohne Training! Zeit für ein Workout?`, icon: '/icon.svg' });
+                }
             }
             setLoading(false);
         };
@@ -43,7 +75,7 @@ export default function AccountPage() {
             </header>
 
             <main className="mx-auto max-w-lg px-6 pt-8 space-y-6">
-                {/* Profile Card */}
+                {/* Profile */}
                 <div className="rounded-3xl p-6 border border-card-border bg-card-border/20">
                     <div className="flex items-center gap-4">
                         <div className="h-16 w-16 flex items-center justify-center rounded-full bg-accent/20 border-2 border-accent">
@@ -68,31 +100,48 @@ export default function AccountPage() {
                     </div>
                 </div>
 
-                {/* Details */}
-                <div className="rounded-3xl p-6 space-y-0 border border-card-border bg-card-border/20">
-                    <h3 className="text-sm font-bold tracking-widest text-muted uppercase mb-4">Details</h3>
-                    <div className="flex justify-between py-3 border-b border-card-border">
-                        <span className="text-sm text-muted">Spitzname</span>
-                        <span className="text-sm font-bold text-foreground">{profile?.nickname || '-'}</span>
+                {/* Settings */}
+                <div className="rounded-3xl p-6 border border-card-border bg-card-border/20 space-y-0">
+                    <h3 className="text-sm font-bold tracking-widest text-muted uppercase mb-4">Einstellungen</h3>
+
+                    {/* Dark/Light Mode */}
+                    <div className="flex items-center justify-between py-4 border-b border-card-border">
+                        <div>
+                            <p className="text-sm font-bold text-foreground">{darkMode ? '🌙 Dark Mode' : '☀️ Light Mode'}</p>
+                            <p className="text-xs text-muted">App-Design umschalten</p>
+                        </div>
+                        <button onClick={toggleTheme}
+                            className={`relative h-7 w-12 rounded-full transition-colors duration-300 ${darkMode ? 'bg-accent' : 'bg-card-border'}`}>
+                            <span className={`absolute top-1 h-5 w-5 rounded-full bg-background shadow transition-transform duration-300 ${darkMode ? 'translate-x-6' : 'translate-x-1'}`} />
+                        </button>
                     </div>
-                    <div className="flex justify-between py-3 border-b border-card-border">
-                        <span className="text-sm text-muted">Alter</span>
-                        <span className="text-sm font-bold text-foreground">{profile?.age_range || '-'}</span>
-                    </div>
-                    <div className="flex justify-between py-3 border-b border-card-border">
-                        <span className="text-sm text-muted">E-Mail</span>
-                        <span className="text-sm font-bold text-foreground truncate max-w-[60%] text-right">{user?.email}</span>
-                    </div>
-                    <div className="flex justify-between py-3">
-                        <span className="text-sm text-muted">Mitglied seit</span>
-                        <span className="text-sm font-bold text-foreground">{new Date(user?.created_at).toLocaleDateString('de-DE', { year: 'numeric', month: 'long', day: 'numeric' })}</span>
-                    </div>
+
+                    {/* Notifications */}
+                    {notifSupported && (
+                        <div className="flex items-center justify-between py-4">
+                            <div>
+                                <p className="text-sm font-bold text-foreground">🔔 Erinnerungen</p>
+                                <p className="text-xs text-muted">Benachrichtigung nach 3 Tagen</p>
+                            </div>
+                            {notifEnabled ? (
+                                <span className="text-xs font-black text-accent uppercase tracking-widest">Aktiv</span>
+                            ) : (
+                                <button onClick={enableNotifications} className="rounded-full bg-accent/10 border border-accent/30 px-3 py-1 text-xs font-black text-accent uppercase tracking-widest hover:bg-accent/20 transition-colors">Aktivieren</button>
+                            )}
+                        </div>
+                    )}
                 </div>
 
-                <button onClick={handleSignOut}
-                    className="w-full rounded-2xl border border-red-500/30 bg-red-500/10 py-4 text-sm font-bold text-red-400 transition-all hover:bg-red-500/20 active:scale-[0.98]">
-                    Abmelden
-                </button>
+                {/* Details */}
+                <div className="rounded-3xl p-6 border border-card-border bg-card-border/20 space-y-0">
+                    <h3 className="text-sm font-bold tracking-widest text-muted uppercase mb-4">Details</h3>
+                    <div className="flex justify-between py-3 border-b border-card-border"><span className="text-sm text-muted">Spitzname</span><span className="text-sm font-bold text-foreground">{profile?.nickname || '-'}</span></div>
+                    <div className="flex justify-between py-3 border-b border-card-border"><span className="text-sm text-muted">Alter</span><span className="text-sm font-bold text-foreground">{profile?.age_range || '-'}</span></div>
+                    <div className="flex justify-between py-3 border-b border-card-border"><span className="text-sm text-muted">E-Mail</span><span className="text-sm font-bold text-foreground truncate max-w-[60%] text-right">{user?.email}</span></div>
+                    <div className="flex justify-between py-3"><span className="text-sm text-muted">Mitglied seit</span><span className="text-sm font-bold text-foreground">{new Date(user?.created_at).toLocaleDateString('de-DE', { year: 'numeric', month: 'long', day: 'numeric' })}</span></div>
+                </div>
+
+                <button onClick={handleSignOut} className="w-full rounded-2xl border border-red-500/30 bg-red-500/10 py-4 text-sm font-bold text-red-400 transition-all hover:bg-red-500/20 active:scale-[0.98]">Abmelden</button>
             </main>
 
             <nav className="fixed bottom-6 left-1/2 z-40 w-full max-w-sm -translate-x-1/2 px-6">
