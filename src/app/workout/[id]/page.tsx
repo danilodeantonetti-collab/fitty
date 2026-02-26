@@ -8,7 +8,6 @@ import { supabase } from "@/lib/supabaseClient";
 interface Exercise { id: string; name: string; target_reps: string; target_sets: number; }
 interface SetLog { reps: string; weight: string; isWarmup?: boolean; }
 
-// 1RM Epley formula
 const calc1RM = (weight: number, reps: number) => reps === 1 ? weight : Math.round(weight * (1 + reps / 30));
 
 export default function WorkoutSession() {
@@ -51,7 +50,6 @@ export default function WorkoutSession() {
             const defaultLogs: Record<string, SetLog[]> = {};
             activePlan.forEach(ex => { defaultLogs[ex.id] = [{reps:"",weight:""},{reps:"",weight:""},{reps:"",weight:""}]; });
             setLogs(defaultLogs);
-
             try {
                 const { data: { user } } = await supabase.auth.getUser();
                 if (user) {
@@ -78,11 +76,10 @@ export default function WorkoutSession() {
         loadWorkoutData();
     }, [id]);
 
-    // Quick-Log: copy entire last session
     const quickLog = () => {
         const copied: Record<string, SetLog[]> = {};
         exercises.forEach(ex => {
-            copied[ex.id] = lastSets[ex.id]?.length ? lastSets[ex.id].map(s => ({ ...s })) : [{ reps: "", weight: "" }, { reps: "", weight: "" }, { reps: "", weight: "" }];
+            copied[ex.id] = lastSets[ex.id]?.length ? lastSets[ex.id].map(s => ({ ...s })) : [{reps:"",weight:""},{reps:"",weight:""},{reps:"",weight:""}];
         });
         setLogs(copied);
     };
@@ -94,11 +91,9 @@ export default function WorkoutSession() {
     };
     const removeSet = (exId: string, idx: number) => setLogs(p => ({ ...p, [exId]: p[exId].filter((_, i) => i !== idx) }));
 
-    // 1RM for an exercise based on current logs
     const get1RM = (exId: string) => {
-        const sets = logs[exId] || [];
         let best = 0;
-        sets.forEach(s => { if (s.weight && s.reps) { const rm = calc1RM(parseFloat(s.weight), parseInt(s.reps)); if (rm > best) best = rm; } });
+        (logs[exId] || []).forEach(s => { if (s.weight && s.reps) { const rm = calc1RM(parseFloat(s.weight), parseInt(s.reps)); if (rm > best) best = rm; } });
         return best;
     };
 
@@ -108,25 +103,19 @@ export default function WorkoutSession() {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) { alert("Nicht eingeloggt!"); setSaving(false); return; }
             const workoutDbId = id === "tag-a" ? "d5e86566-a4c3-4d64-8ab3-c36b81a7b1fb" : "a12bc85d-8b01-447a-b552-320e8b2b78a9";
-
             const { data: allSets } = await supabase.from('sets').select('exercise_id, weight, sessions!inner(user_id)').eq('sessions.user_id', user.id);
             const allTimeBest: Record<string, number> = {};
             (allSets || []).forEach((s: any) => { if (!allTimeBest[s.exercise_id] || s.weight > allTimeBest[s.exercise_id]) allTimeBest[s.exercise_id] = s.weight; });
-
             const { data: sessionInfo, error: sessionError } = await supabase.from('sessions').insert([{ user_id: user.id, workout_id: workoutDbId, date: new Date(sessionDate).toISOString() }]).select().single();
             if (sessionError) throw sessionError;
-
             const setsToInsert: any[] = [];
             const prs: { name: string; weight: number }[] = [];
             Object.keys(logs).forEach(exId => {
                 const workingSets = logs[exId].filter(s => !s.isWarmup);
                 const maxNew = Math.max(...workingSets.filter(s => s.weight).map(s => parseFloat(s.weight)), 0);
                 if (maxNew > 0 && maxNew > (allTimeBest[exId] || 0)) prs.push({ name: exerciseNameById(exId), weight: maxNew });
-                logs[exId].forEach((set, idx) => {
-                    if (set.reps || set.weight) setsToInsert.push({ session_id: sessionInfo.id, exercise_id: exId, weight: set.weight ? parseFloat(set.weight) : 0, reps: set.reps ? parseInt(set.reps) : 0, order: idx + 1 });
-                });
+                logs[exId].forEach((set, idx) => { if (set.reps || set.weight) setsToInsert.push({ session_id: sessionInfo.id, exercise_id: exId, weight: set.weight ? parseFloat(set.weight) : 0, reps: set.reps ? parseInt(set.reps) : 0, order: idx + 1 }); });
             });
-
             if (setsToInsert.length > 0) { const { error } = await supabase.from('sets').insert(setsToInsert); if (error) throw error; }
             if (prs.length > 0) { setNewPRs(prs); setShowPRModal(true); setSaving(false); }
             else router.push("/dashboard");
@@ -158,20 +147,36 @@ export default function WorkoutSession() {
 
     return (
         <div className="min-h-screen bg-background pb-32">
-            <header className="sticky top-0 z-30 flex flex-col items-center border-b border-card-border bg-background/80 px-6 py-4 backdrop-blur-md gap-3">
+            <header className="sticky top-0 z-30 flex flex-col border-b border-card-border bg-background px-6 py-4 gap-3">
+                {/* Top row: back / title / finish */}
                 <div className="flex w-full items-center justify-between">
-                    <Link href="/dashboard" className="text-muted hover:text-foreground"><svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg></Link>
+                    <Link href="/dashboard" className="text-muted hover:text-foreground">
+                        <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                    </Link>
                     <h1 className="text-xl font-black tracking-tighter text-foreground uppercase">{id?.toString().replace("-", " ")}</h1>
-                    <button onClick={handleFinish} disabled={saving} className="rounded-full bg-accent px-4 py-1.5 text-xs font-black text-background uppercase tracking-wider disabled:opacity-50">{saving ? "..." : "Finish"}</button>
+                    <button onClick={handleFinish} disabled={saving} className="rounded-full bg-accent px-4 py-1.5 text-xs font-black text-background uppercase tracking-wider disabled:opacity-50">
+                        {saving ? "..." : "Finish"}
+                    </button>
                 </div>
-                <div className="flex items-center gap-3 w-full">
-                    <div className="flex-1 flex items-center gap-2 bg-card-border/30 rounded-full py-1.5 px-4">
-                        <svg className="w-4 h-4 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
-                        <input type="date" value={sessionDate} onChange={(e) => setSessionDate(e.target.value)} className="bg-transparent text-sm font-bold text-foreground border-none outline-none w-full" />
+
+                {/* Bottom row: date (left) + Letzte Session button (right) */}
+                <div className="flex w-full items-center justify-between gap-3">
+                    <div className="flex items-center gap-2 bg-card-border/30 rounded-full py-1.5 px-4">
+                        <svg className="w-4 h-4 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
+                        </svg>
+                        <input type="date" value={sessionDate} onChange={(e) => setSessionDate(e.target.value)}
+                            className="bg-transparent text-sm font-bold text-foreground border-none outline-none w-full" />
                     </div>
                     {hasLastSession && (
-                        <button onClick={quickLog} className="rounded-full border border-accent/50 bg-accent/10 px-4 py-1.5 text-[10px] font-black text-accent uppercase tracking-widest whitespace-nowrap hover:bg-accent/20 transition-colors">
-                            ⚡ Quick-Log
+                        <button onClick={quickLog}
+                            className="flex items-center gap-1.5 rounded-full border border-accent/50 bg-accent/10 px-3 py-1.5 text-[10px] font-black text-accent uppercase tracking-widest whitespace-nowrap hover:bg-accent/20 transition-colors flex-shrink-0">
+                            {/* Rewind icon */}
+                            <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                                <polyline points="1 4 1 10 7 10" />
+                                <path d="M3.51 15a9 9 0 1 0 .49-4.95" />
+                            </svg>
+                            Letzte Session
                         </button>
                     )}
                 </div>
@@ -186,14 +191,14 @@ export default function WorkoutSession() {
                                 <div className="flex items-start justify-between border-b border-accent/20 pb-2">
                                     <div>
                                         <h2 className="text-2xl font-black tracking-tight text-foreground">{ex.name}</h2>
-                                        <div className="flex items-center gap-3 mt-0.5">
+                                        <div className="flex items-center gap-3 mt-0.5 flex-wrap">
                                             {lastPerformance[ex.id] && <p className="text-xs font-bold text-accent uppercase tracking-widest">Zuletzt: {lastPerformance[ex.id].weight}kg &times; {lastPerformance[ex.id].reps}</p>}
                                             {rm > 0 && <p className="text-xs font-bold text-muted uppercase tracking-widest">1RM ~{rm}kg</p>}
                                         </div>
                                     </div>
                                     <div className="flex gap-2 flex-shrink-0">
-                                        <button onClick={() => addWarmup(ex.id)} className="rounded-lg bg-card-border/40 px-2 py-1 text-[9px] font-bold text-muted uppercase tracking-tighter hover:text-foreground transition-colors">+ Warm</button>
-                                        <button onClick={() => addSet(ex.id)} className="rounded-lg bg-card-border px-2 py-1 text-[9px] font-bold text-accent uppercase tracking-tighter hover:bg-accent/10 transition-colors">+ Set</button>
+                                        <button onClick={() => addWarmup(ex.id)} className="rounded-lg bg-card-border/40 px-2 py-1 text-[9px] font-bold text-muted uppercase hover:text-foreground transition-colors">+ Warm</button>
+                                        <button onClick={() => addSet(ex.id)} className="rounded-lg bg-card-border px-2 py-1 text-[9px] font-bold text-accent uppercase hover:bg-accent/10 transition-colors">+ Set</button>
                                     </div>
                                 </div>
                                 <div className="mt-4 space-y-3">
