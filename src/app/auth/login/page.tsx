@@ -70,7 +70,7 @@ export default function LoginPage() {
                                 type="password"
                                 required
                                 className="mt-2 w-full rounded-xl border border-card-border bg-background/50 px-4 py-3 text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent transition-all"
-                                placeholder="\u2022\u2022\u2022\u2022\u2022\u2022\u2022\u2022"
+                                placeholder="••••••••"
                                 value={password}
                                 onChange={(e) => setPassword(e.target.value)}
                             />
