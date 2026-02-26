@@ -53,36 +53,35 @@ export default function WorkoutSession() {
         const loadWorkoutData = async () => {
             const activePlan = id === "tag-a" ? mockPlanA : (id === "tag-b" ? mockPlanB : []);
             setExercises(activePlan);
+            // Pre-fill 3 empty sets per exercise
+            const defaultLogs: Record<string, SetLog[]> = {};
+            activePlan.forEach(ex => {
+                defaultLogs[ex.id] = [
+                    { reps: "", weight: "" },
+                    { reps: "", weight: "" },
+                    { reps: "", weight: "" },
+                ];
+            });
+            setLogs(defaultLogs);
 
             try {
                const { data: { user } } = await supabase.auth.getUser();
                if (user) {
                    const workoutDbId = id === "tag-a" ? "d5e86566-a4c3-4d64-8ab3-c36b81a7b1fb" : "a12bc85d-8b01-447a-b552-320e8b2b78a9";
-                   
                    const { data: lastSession } = await supabase
-                        .from('sessions')
-                        .select('id, date')
-                        .eq('user_id', user.id)
-                        .eq('workout_id', workoutDbId)
-                        .order('date', { ascending: false })
-                        .limit(1)
-                        .single();
+                        .from('sessions').select('id, date').eq('user_id', user.id)
+                        .eq('workout_id', workoutDbId).order('date', { ascending: false }).limit(1).single();
 
                    if (lastSession) {
                        const { data: lastSets } = await supabase
-                            .from('sets')
-                            .select('exercise_id, weight, reps')
-                            .eq('session_id', lastSession.id)
-                            .order('weight', { ascending: false });
+                            .from('sets').select('exercise_id, weight, reps')
+                            .eq('session_id', lastSession.id).order('weight', { ascending: false });
                         
                        if (lastSets) {
                            const performanceMap: Record<string, { weight: string, reps: string }> = {};
                            lastSets.forEach(set => {
                                if (!performanceMap[set.exercise_id]) {
-                                   performanceMap[set.exercise_id] = { 
-                                       weight: set.weight.toString(), 
-                                       reps: set.reps.toString() 
-                                   };
+                                   performanceMap[set.exercise_id] = { weight: set.weight.toString(), reps: set.reps.toString() };
                                }
                            });
                            setLastPerformance(performanceMap);
@@ -92,18 +91,13 @@ export default function WorkoutSession() {
             } catch (error) {
                 console.error("Could not fetch history", error);
             }
-
             setLoading(false);
         };
-
         loadWorkoutData();
     }, [id]);
 
     const addSet = (exerciseId: string) => {
-        setLogs((prev) => ({
-            ...prev,
-            [exerciseId]: [...(prev[exerciseId] || []), { reps: "", weight: "" }],
-        }));
+        setLogs((prev) => ({ ...prev, [exerciseId]: [...(prev[exerciseId] || []), { reps: "", weight: "" }] }));
     };
 
     const updateSet = (exerciseId: string, index: number, field: keyof SetLog, value: string) => {
@@ -116,35 +110,20 @@ export default function WorkoutSession() {
         try {
             setLoading(true);
             const { data: { user } } = await supabase.auth.getUser();
-
-            if (!user) {
-                alert("Nicht eingeloggt!");
-                setLoading(false);
-                return;
-            }
+            if (!user) { alert("Nicht eingeloggt!"); setLoading(false); return; }
 
             const workoutDbId = id === "tag-a" ? "d5e86566-a4c3-4d64-8ab3-c36b81a7b1fb" : "a12bc85d-8b01-447a-b552-320e8b2b78a9";
             const fullDate = new Date(sessionDate).toISOString();
 
             const { data: sessionInfo, error: sessionError } = await supabase
-                .from('sessions')
-                .insert([{ user_id: user.id, workout_id: workoutDbId, date: fullDate }])
-                .select()
-                .single();
-
+                .from('sessions').insert([{ user_id: user.id, workout_id: workoutDbId, date: fullDate }]).select().single();
             if (sessionError) throw sessionError;
 
             const setsToInsert: any[] = [];
             Object.keys(logs).forEach(exerciseId => {
                 logs[exerciseId].forEach((set, idx) => {
                     if (set.reps || set.weight) {
-                        setsToInsert.push({
-                            session_id: sessionInfo.id,
-                            exercise_id: exerciseId,
-                            weight: set.weight ? parseFloat(set.weight) : 0,
-                            reps: set.reps ? parseInt(set.reps) : 0,
-                            order: idx + 1
-                        });
+                        setsToInsert.push({ session_id: sessionInfo.id, exercise_id: exerciseId, weight: set.weight ? parseFloat(set.weight) : 0, reps: set.reps ? parseInt(set.reps) : 0, order: idx + 1 });
                     }
                 });
             });
@@ -153,7 +132,6 @@ export default function WorkoutSession() {
                 const { error: setsError } = await supabase.from('sets').insert(setsToInsert);
                 if (setsError) throw setsError;
             }
-
             router.push("/dashboard");
         } catch (error: any) {
             console.error("Error saving workout:", error);
@@ -185,12 +163,12 @@ export default function WorkoutSession() {
                 <div className="space-y-12">
                     {exercises.map((ex) => (
                         <div key={ex.id} className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-                            <div className="flex items-end justify-between border-b border-accent/20 pb-2">
-                                <div className="space-y-1">
+                            <div className="flex items-center justify-between border-b border-accent/20 pb-2">
+                                <div>
                                     <h2 className="text-2xl font-black tracking-tight text-foreground">{ex.name}</h2>
                                     {lastPerformance[ex.id] && (
-                                        <p className="text-xs font-bold text-accent uppercase tracking-widest">
-                                            Zuletzt: {lastPerformance[ex.id].weight}kg x {lastPerformance[ex.id].reps}
+                                        <p className="text-xs font-bold text-accent uppercase tracking-widest mt-0.5">
+                                            Zuletzt: {lastPerformance[ex.id].weight}kg &times; {lastPerformance[ex.id].reps}
                                         </p>
                                     )}
                                 </div>
@@ -202,17 +180,18 @@ export default function WorkoutSession() {
 
                             <div className="mt-4 space-y-3">
                                 {(logs[ex.id] || []).map((set, idx) => (
-                                    <div key={idx} className="flex items-center gap-4 animate-in zoom-in-95 duration-300">
+                                    <div key={idx} className="flex items-center gap-4">
                                         <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-accent/10 border border-accent/20 text-sm font-black text-accent">{idx + 1}</div>
                                         <div className="grid flex-1 grid-cols-2 gap-3">
-                                            <input type="number" placeholder="KG" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.weight} onChange={(e) => updateSet(ex.id, idx, "weight", e.target.value)} />
-                                            <input type="number" placeholder="REPS" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.id, idx, "reps", e.target.value)} />
+                                            <input type="number" placeholder="KG"
+                                                className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all"
+                                                value={set.weight} onChange={(e) => updateSet(ex.id, idx, "weight", e.target.value)} />
+                                            <input type="number" placeholder="REPS"
+                                                className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all"
+                                                value={set.reps} onChange={(e) => updateSet(ex.id, idx, "reps", e.target.value)} />
                                         </div>
                                     </div>
                                 ))}
-                                {(logs[ex.id] || []).length === 0 && (
-                                    <p className="py-4 text-center text-[10px] font-bold uppercase tracking-widest text-muted/30">Noch keine S\u00e4tze geloggt</p>
-                                )}
                             </div>
                         </div>
                     ))}
