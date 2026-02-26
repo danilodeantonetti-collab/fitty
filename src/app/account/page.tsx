@@ -8,6 +8,7 @@ import { useRouter } from "next/navigation";
 export default function AccountPage() {
     const router = useRouter();
     const [user, setUser] = useState<any>(null);
+    const [profile, setProfile] = useState<any>(null);
     const [loading, setLoading] = useState(true);
     const [stats, setStats] = useState({ sessions: 0, totalVolume: 0 });
 
@@ -17,11 +18,10 @@ export default function AccountPage() {
             if (!user) { router.push("/auth/login"); return; }
             setUser(user);
 
-            const { data } = await supabase
-                .from('sessions')
-                .select('id, sets(weight, reps)')
-                .eq('user_id', user.id);
+            const { data: profileData } = await supabase.from('profiles').select('*').eq('id', user.id).single();
+            if (profileData) setProfile(profileData);
 
+            const { data } = await supabase.from('sessions').select('id, sets(weight, reps)').eq('user_id', user.id);
             if (data) {
                 let vol = 0;
                 data.forEach((s: any) => s.sets.forEach((set: any) => { vol += (set.weight || 0) * (set.reps || 0); }));
@@ -32,39 +32,38 @@ export default function AccountPage() {
         load();
     }, [router]);
 
-    const handleSignOut = async () => {
-        await supabase.auth.signOut();
-        router.push('/auth/login');
-    };
+    const handleSignOut = async () => { await supabase.auth.signOut(); router.push('/auth/login'); };
 
     if (loading) return <div className="flex h-screen items-center justify-center bg-black text-accent font-bold">Laden...</div>;
+
+    const goalEmojis: Record<string, string> = {
+        'Kraft aufbauen': '💪', 'Abnehmen': '🔥', 'Muskeln aufbauen': '🏋️',
+        'Fit bleiben': '🏃', 'Beweglichkeit': '🧘', 'Ausdauer': '❤️'
+    };
 
     return (
         <div className="min-h-screen bg-background pb-32">
             <header className="sticky top-0 z-30 flex items-center justify-between border-b border-card-border bg-background/80 px-6 py-4 backdrop-blur-md">
-                <h1 className="text-2xl font-black tracking-tighter text-foreground">
-                    ACC<span className="text-accent italic">OUNT</span>
-                </h1>
+                <h1 className="text-2xl font-black tracking-tighter text-foreground">ACC<span className="text-accent italic">OUNT</span></h1>
                 <div className="h-10 w-10 flex items-center justify-center rounded-full border border-card-border glass bg-accent/10">
-                    <span className="text-sm font-bold text-accent">{user?.email?.[0]?.toUpperCase()}</span>
+                    <span className="text-sm font-bold text-accent">{profile?.nickname?.[0]?.toUpperCase() || user?.email?.[0]?.toUpperCase()}</span>
                 </div>
             </header>
 
             <main className="mx-auto max-w-lg px-6 pt-8 space-y-6">
-                {/* Profile Card */}
                 <div className="glass rounded-3xl p-6 neon-shadow animate-in fade-in slide-in-from-bottom-4 duration-700">
                     <div className="flex items-center gap-4">
                         <div className="h-16 w-16 flex items-center justify-center rounded-full bg-accent/20 border-2 border-accent">
-                            <span className="text-2xl font-black text-accent">{user?.email?.[0]?.toUpperCase()}</span>
+                            <span className="text-2xl font-black text-accent">{profile?.nickname?.[0]?.toUpperCase() || '?'}</span>
                         </div>
                         <div>
-                            <h2 className="text-xl font-black text-foreground">Daniel</h2>
+                            <h2 className="text-xl font-black text-foreground">{profile?.nickname || 'Athlete'}</h2>
                             <p className="text-sm text-muted">{user?.email}</p>
+                            {profile?.goal && <p className="text-xs text-accent mt-1">{goalEmojis[profile.goal] || ''} {profile.goal}</p>}
                         </div>
                     </div>
                 </div>
 
-                {/* Stats */}
                 <div className="grid grid-cols-2 gap-4 animate-in fade-in slide-in-from-bottom-6 duration-700">
                     <div className="glass rounded-2xl p-5 text-center border border-card-border">
                         <span className="text-3xl font-black text-foreground">{stats.sessions}</span>
@@ -76,35 +75,38 @@ export default function AccountPage() {
                     </div>
                 </div>
 
-                {/* Info */}
                 <div className="glass rounded-3xl p-6 space-y-4 animate-in fade-in slide-in-from-bottom-8 duration-700">
                     <h3 className="text-sm font-bold tracking-widest text-muted uppercase">Details</h3>
+                    <div className="flex justify-between py-3 border-b border-card-border">
+                        <span className="text-sm text-muted">Spitzname</span>
+                        <span className="text-sm font-bold text-foreground">{profile?.nickname || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-3 border-b border-card-border">
+                        <span className="text-sm text-muted">Ziel</span>
+                        <span className="text-sm font-bold text-accent">{profile?.goal || '-'}</span>
+                    </div>
+                    <div className="flex justify-between py-3 border-b border-card-border">
+                        <span className="text-sm text-muted">Alter</span>
+                        <span className="text-sm font-bold text-foreground">{profile?.age_range || '-'}</span>
+                    </div>
                     <div className="flex justify-between py-3 border-b border-card-border">
                         <span className="text-sm text-muted">E-Mail</span>
                         <span className="text-sm font-bold text-foreground">{user?.email}</span>
                     </div>
-                    <div className="flex justify-between py-3 border-b border-card-border">
+                    <div className="flex justify-between py-3">
                         <span className="text-sm text-muted">Mitglied seit</span>
                         <span className="text-sm font-bold text-foreground">
                             {new Date(user?.created_at).toLocaleDateString('de-DE', { year: 'numeric', month: 'long', day: 'numeric' })}
                         </span>
                     </div>
-                    <div className="flex justify-between py-3">
-                        <span className="text-sm text-muted">Anbieter</span>
-                        <span className="text-sm font-bold text-accent uppercase">{user?.app_metadata?.provider || 'email'}</span>
-                    </div>
                 </div>
 
-                {/* Sign Out */}
-                <button
-                    onClick={handleSignOut}
-                    className="w-full rounded-2xl border border-red-500/30 bg-red-500/10 py-4 text-sm font-bold text-red-400 transition-all hover:bg-red-500/20 active:scale-[0.98] animate-in fade-in slide-in-from-bottom-10 duration-700"
-                >
+                <button onClick={handleSignOut}
+                    className="w-full rounded-2xl border border-red-500/30 bg-red-500/10 py-4 text-sm font-bold text-red-400 transition-all hover:bg-red-500/20 active:scale-[0.98] animate-in fade-in slide-in-from-bottom-10 duration-700">
                     Abmelden
                 </button>
             </main>
 
-            {/* Bottom Nav */}
             <nav className="fixed bottom-6 left-1/2 z-40 w-full max-w-sm -translate-x-1/2 px-6">
                 <div className="flex items-center justify-around rounded-full bg-background/80 py-3 backdrop-blur-xl border border-card-border shadow-2xl glass">
                     <Link href="/dashboard" className="flex flex-col items-center gap-1 text-muted transition-colors hover:text-accent p-2">

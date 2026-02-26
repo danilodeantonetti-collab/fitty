@@ -1,21 +1,26 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useState } from "react";
+import { supabase } from "@/lib/supabaseClient";
 
 export default function Dashboard() {
+    const [nickname, setNickname] = useState("Athlete");
+
+    useEffect(() => {
+        const load = async () => {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (user) {
+                const { data } = await supabase.from('profiles').select('nickname').eq('id', user.id).single();
+                if (data?.nickname) setNickname(data.nickname);
+            }
+        };
+        load();
+    }, []);
+
     const workouts = [
-        {
-            id: "tag-a",
-            name: "TAG A",
-            description: "Squats, Deadlifts, Pull-ups, Incline Press",
-            accent: "from-accent/20 to-accent/5",
-        },
-        {
-            id: "tag-b",
-            name: "TAG B",
-            description: "Squats, Bench Press, Rows, Overhead Press",
-            accent: "from-blue-500/20 to-blue-500/5",
-        },
+        { id: "tag-a", name: "TAG A", description: "Squats, Deadlifts, Pull-ups, Incline Press", accent: "from-accent/20 to-accent/5" },
+        { id: "tag-b", name: "TAG B", description: "Squats, Bench Press, Rows, Overhead Press", accent: "from-blue-500/20 to-blue-500/5" },
     ];
 
     return (
@@ -24,15 +29,15 @@ export default function Dashboard() {
                 <h1 className="text-2xl font-black tracking-tighter text-foreground">
                     FIT<span className="text-accent italic">TY</span>
                 </h1>
-                <div className="h-10 w-10 overflow-hidden rounded-full border border-card-border glass">
-                    <div className="flex h-full w-full items-center justify-center bg-accent/10 text-xs font-bold text-accent uppercase">D</div>
-                </div>
+                <Link href="/account" className="h-10 w-10 overflow-hidden rounded-full border border-card-border glass">
+                    <div className="flex h-full w-full items-center justify-center bg-accent/10 text-xs font-bold text-accent uppercase">{nickname[0]}</div>
+                </Link>
             </header>
 
             <main className="mx-auto max-w-lg px-6 pt-10">
                 <div className="mb-10 animate-in fade-in slide-in-from-left-4 duration-700">
                     <h2 className="text-4xl font-bold tracking-tight text-foreground">
-                        Hallo <span className="text-accent italic">Daniel,</span><br />
+                        Hallo <span className="text-accent italic">{nickname},</span><br />
                         Wähle dein Workout
                     </h2>
                     <p className="mt-2 text-muted">Ready for your next session?</p>
