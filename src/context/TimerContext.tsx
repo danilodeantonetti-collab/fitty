@@ -24,6 +24,22 @@ export function useTimer() {
     return ctx;
 }
 
+function playBeep(frequency: number, duration: number, volume = 0.3) {
+    try {
+        const ctx = new AudioContext();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+        osc.frequency.value = frequency;
+        osc.type = "sine";
+        gain.gain.setValueAtTime(volume, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + duration);
+        osc.start();
+        osc.stop(ctx.currentTime + duration);
+    } catch {}
+}
+
 export function TimerProvider({ children }: { children: React.ReactNode }) {
     const [workTime, setWorkTime] = useState(90);
     const [restTime, setRestTime] = useState(120);
@@ -35,26 +51,35 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     const restRef = useRef(120);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
 
-    // Keep refs in sync with state for use inside setInterval
     useEffect(() => { phaseRef.current = phase; }, [phase]);
     useEffect(() => { workRef.current = workTime; }, [workTime]);
     useEffect(() => { restRef.current = restTime; }, [restTime]);
 
     const tick = useCallback(() => {
         setTimeLeft((prev) => {
-            if (prev <= 1) {
+            const next = prev - 1;
+
+            // Countdown beeps: last 5 seconds
+            if (next > 0 && next <= 5) {
+                playBeep(660, 0.1, 0.2); // short tick
+            }
+
+            if (next <= 0) {
+                // Phase switch beep
                 if (phaseRef.current === "WORK") {
+                    playBeep(880, 0.4, 0.4); // high end-of-work beep
                     setPhase("REST");
                     phaseRef.current = "REST";
                     return restRef.current;
                 } else {
+                    playBeep(440, 0.4, 0.4); // low end-of-rest beep
                     setPhase("WORK");
                     phaseRef.current = "WORK";
                     setCurrentSet((s) => s + 1);
                     return workRef.current;
                 }
             }
-            return prev - 1;
+            return next;
         });
     }, []);
 
