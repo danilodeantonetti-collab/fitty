@@ -35,7 +35,7 @@ export default function Dashboard() {
                 <div className="mb-10 animate-in fade-in slide-in-from-left-4 duration-700">
                     <h2 className="text-4xl font-bold tracking-tight text-foreground">
                         Hallo <span className="text-accent italic">Daniel,</span><br />
-                        W\u00e4hle dein Workout
+                        Wähle dein Workout
                     </h2>
                     <p className="mt-2 text-muted">Ready for your next session?</p>
                 </div>

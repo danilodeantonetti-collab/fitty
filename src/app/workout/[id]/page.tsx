@@ -34,19 +34,19 @@ export default function WorkoutSession() {
         { id: "a1", name: "Kniebeugen", target_sets: 5, target_reps: "5" },
         { id: "a2", name: "Kreuzheben", target_sets: 1, target_reps: "5" },
         { id: "a3", name: "Klimmziehen eng", target_sets: 4, target_reps: "6-8" },
-        { id: "a4", name: "Schr\u00e4gbankdr\u00fccken", target_sets: 4, target_reps: "6-8" },
+        { id: "a4", name: "Schrägbankdrücken", target_sets: 4, target_reps: "6-8" },
         { id: "a5", name: "Langhantelrudern OG", target_sets: 3, target_reps: "8-12" },
-        { id: "a6", name: "Trizepsdr\u00fccken (Stange)", target_sets: 3, target_reps: "8-12" },
+        { id: "a6", name: "Trizepsdrücken (Stange)", target_sets: 3, target_reps: "8-12" },
         { id: "a7", name: "Hammer Curls", target_sets: 2, target_reps: "8-12" },
     ];
 
     const mockPlanB = [
         { id: "b1", name: "Kniebeugen", target_sets: 5, target_reps: "5" },
-        { id: "b2", name: "Bankdr\u00fccken", target_sets: 5, target_reps: "5" },
+        { id: "b2", name: "Bankdrücken", target_sets: 5, target_reps: "5" },
         { id: "b3", name: "Langhantelrudern UG", target_sets: 5, target_reps: "5" },
-        { id: "b4", name: "Schulterdr\u00fccken (LH)", target_sets: 3, target_reps: "8-12" },
+        { id: "b4", name: "Schulterdrücken (LH)", target_sets: 3, target_reps: "8-12" },
         { id: "b5", name: "SZ-Curls", target_sets: 3, target_reps: "8-12" },
-        { id: "b6", name: "Trizepsdr\u00fccken (Seil)", target_sets: 2, target_reps: "8-12" },
+        { id: "b6", name: "Trizepsdrücken (Seil)", target_sets: 2, target_reps: "8-12" },
     ];
 
     useEffect(() => {
@@ -224,7 +224,7 @@ export default function WorkoutSession() {
                                     onClick={() => addSet(ex.id)}
                                     className="rounded-lg bg-card-border px-3 py-1 text-[10px] font-bold text-accent uppercase tracking-tighter hover:bg-accent/10 transition-colors"
                                 >
-                                    + Set hinzuf\u00fcgen
+                                    + Set hinzufügen
                                 </button>
                             </div>
 
@@ -258,7 +258,7 @@ export default function WorkoutSession() {
                                 ))}
                                 {(logs[ex.id] || []).length === 0 && (
                                     <p className="py-4 text-center text-[10px] font-bold uppercase tracking-widest text-muted/30">
-                                        Noch keine S\u00e4tze geloggt
+                                        Noch keine Sätze geloggt
                                     </p>
                                 )}
                             </div>

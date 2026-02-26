@@ -29,7 +29,7 @@ export default function SignupPage() {
             setMessage({ type: "error", text: error.message });
             setLoading(false);
         } else {
-            setMessage({ type: "success", text: "Registrierung erfolgreich! Bitte pr\u00fcfe deine E-Mails." });
+            setMessage({ type: "success", text: "Registrierung erfolgreich! Bitte prüfe deine E-Mails." });
             window.location.assign('/dashboard');
         }
     };

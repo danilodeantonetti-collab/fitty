@@ -7,17 +7,17 @@ import { useRouter } from "next/navigation";
 
 const EXERCISE_MUSCLE_MAP: Record<string, string> = {
     "Kniebeugen": "Beine",
-    "Kreuzheben": "R\u00fccken",
-    "Klimmziehen eng": "R\u00fccken",
-    "Schr\u00e4gbankdr\u00fccken": "Brust",
-    "Langhantelrudern OG": "R\u00fccken",
-    "Trizepsdr\u00fccken (Stange)": "Trizeps",
+    "Kreuzheben": "Rücken",
+    "Klimmziehen eng": "Rücken",
+    "Schrägbankdrücken": "Brust",
+    "Langhantelrudern OG": "Rücken",
+    "Trizepsdrücken (Stange)": "Trizeps",
     "Hammer Curls": "Bizeps",
-    "Bankdr\u00fccken": "Brust",
-    "Langhantelrudern UG": "R\u00fccken",
-    "Schulterdr\u00fccken (LH)": "Schultern",
+    "Bankdrücken": "Brust",
+    "Langhantelrudern UG": "Rücken",
+    "Schulterdrücken (LH)": "Schultern",
     "SZ-Curls": "Bizeps",
-    "Trizepsdr\u00fccken (Seil)": "Trizeps"
+    "Trizepsdrücken (Seil)": "Trizeps"
 };
 
 type FilterType = "7D" | "30D" | "ALL";
