@@ -1,0 +1,18 @@
+{
+  "name": "Fitty – Workout Tracker",
+  "short_name": "Fitty",
+  "description": "Dein persönlicher Workout Tracker für progressives Training.",
+  "start_url": "/dashboard",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#e2ff00",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}
