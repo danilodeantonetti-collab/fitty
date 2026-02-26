@@ -27,18 +27,18 @@ export default function WorkoutSession() {
         { id: "a1", name: "Kniebeugen", target_sets: 5, target_reps: "5" },
         { id: "a2", name: "Kreuzheben", target_sets: 1, target_reps: "5" },
         { id: "a3", name: "Klimmziehen eng", target_sets: 4, target_reps: "6-8" },
-        { id: "a4", name: "Schr\u00e4gbankdr\u00fccken", target_sets: 4, target_reps: "6-8" },
+        { id: "a4", name: "Schrägbankdrücken", target_sets: 4, target_reps: "6-8" },
         { id: "a5", name: "Langhantelrudern OG", target_sets: 3, target_reps: "8-12" },
-        { id: "a6", name: "Trizepsdr\u00fccken (Stange)", target_sets: 3, target_reps: "8-12" },
+        { id: "a6", name: "Trizepsdrücken (Stange)", target_sets: 3, target_reps: "8-12" },
         { id: "a7", name: "Hammer Curls", target_sets: 2, target_reps: "8-12" },
     ];
     const mockPlanB: Exercise[] = [
         { id: "b1", name: "Kniebeugen", target_sets: 5, target_reps: "5" },
-        { id: "b2", name: "Bankdr\u00fccken", target_sets: 5, target_reps: "5" },
+        { id: "b2", name: "Bankdrücken", target_sets: 5, target_reps: "5" },
         { id: "b3", name: "Langhantelrudern UG", target_sets: 5, target_reps: "5" },
-        { id: "b4", name: "Schulterdr\u00fccken (LH)", target_sets: 3, target_reps: "8-12" },
+        { id: "b4", name: "Schulterdrücken (LH)", target_sets: 3, target_reps: "8-12" },
         { id: "b5", name: "SZ-Curls", target_sets: 3, target_reps: "8-12" },
-        { id: "b6", name: "Trizepsdr\u00fccken (Seil)", target_sets: 2, target_reps: "8-12" },
+        { id: "b6", name: "Trizepsdrücken (Seil)", target_sets: 2, target_reps: "8-12" },
     ];
     const allExercises = [...mockPlanA, ...mockPlanB];
     const exerciseNameById = (exId: string) => allExercises.find(e => e.id === exId)?.name || exId;
@@ -148,7 +148,6 @@ export default function WorkoutSession() {
     return (
         <div className="min-h-screen bg-background pb-32">
             <header className="sticky top-0 z-30 flex flex-col border-b border-card-border bg-background px-6 py-4 gap-3">
-                {/* Top row: back / title / finish */}
                 <div className="flex w-full items-center justify-between">
                     <Link href="/dashboard" className="text-muted hover:text-foreground">
                         <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
@@ -158,20 +157,14 @@ export default function WorkoutSession() {
                         {saving ? "..." : "Finish"}
                     </button>
                 </div>
-
-                {/* Bottom row: date (left) + Letzte Session button (right) */}
                 <div className="flex w-full items-center justify-between gap-3">
                     <div className="flex items-center gap-2 bg-card-border/30 rounded-full py-1.5 px-4">
-                        <svg className="w-4 h-4 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-                        </svg>
+                        <svg className="w-4 h-4 text-accent flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z"/></svg>
                         <input type="date" value={sessionDate} onChange={(e) => setSessionDate(e.target.value)}
-                            className="bg-transparent text-sm font-bold text-foreground border-none outline-none w-full" />
+                            className="bg-transparent text-sm font-bold text-foreground border-none outline-none" />
                     </div>
                     {hasLastSession && (
-                        <button onClick={quickLog}
-                            className="flex items-center gap-1.5 rounded-full border border-accent/50 bg-accent/10 px-3 py-1.5 text-[10px] font-black text-accent uppercase tracking-widest whitespace-nowrap hover:bg-accent/20 transition-colors flex-shrink-0">
-                            {/* Rewind icon */}
+                        <button onClick={quickLog} className="flex items-center gap-1.5 rounded-full border border-accent/50 bg-accent/10 px-3 py-1.5 text-[10px] font-black text-accent uppercase tracking-widest whitespace-nowrap hover:bg-accent/20 transition-colors flex-shrink-0">
                             <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
                                 <polyline points="1 4 1 10 7 10" />
                                 <path d="M3.51 15a9 9 0 1 0 .49-4.95" />
@@ -223,8 +216,10 @@ export default function WorkoutSession() {
                 </div>
             </main>
 
-            <div className="fixed bottom-10 left-1/2 -translate-x-1/2 px-6 w-full max-w-sm">
-                <button onClick={handleFinish} disabled={saving} className="btn-primary w-full flex items-center justify-center gap-3 text-lg disabled:opacity-50">
+            {/* Bottom button — truly centered */}
+            <div className="fixed bottom-8 inset-x-0 flex justify-center px-6">
+                <button onClick={handleFinish} disabled={saving}
+                    className="btn-primary w-full max-w-sm flex items-center justify-center gap-3 text-lg disabled:opacity-50">
                     {saving ? "Speichere..." : "Session beenden"}
                     <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
                 </button>

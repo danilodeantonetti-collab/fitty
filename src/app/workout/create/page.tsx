@@ -8,43 +8,36 @@ import { supabase } from "@/lib/supabaseClient";
 interface ExerciseEntry { name: string; sets: number; reps: string; }
 
 const EXERCISE_DB = [
-    // Brust
-    { name: "Bankdr\u00fccken", muscle: "Brust" },
-    { name: "Schr\u00e4gbankdr\u00fccken", muscle: "Brust" },
+    { name: "Bankdrücken", muscle: "Brust" },
+    { name: "Schrägbankdrücken", muscle: "Brust" },
     { name: "Fliegende Hantel", muscle: "Brust" },
     { name: "Dips", muscle: "Brust" },
-    // R\u00fccken
-    { name: "Klimmziehen", muscle: "R\u00fccken" },
-    { name: "Klimmziehen eng", muscle: "R\u00fccken" },
-    { name: "Langhantelrudern UG", muscle: "R\u00fccken" },
-    { name: "Langhantelrudern OG", muscle: "R\u00fccken" },
-    { name: "Kreuzheben", muscle: "R\u00fccken" },
-    { name: "Rudern Maschine", muscle: "R\u00fccken" },
-    // Beine
+    { name: "Klimmziehen", muscle: "Rücken" },
+    { name: "Klimmziehen eng", muscle: "Rücken" },
+    { name: "Langhantelrudern UG", muscle: "Rücken" },
+    { name: "Langhantelrudern OG", muscle: "Rücken" },
+    { name: "Kreuzheben", muscle: "Rücken" },
+    { name: "Rudern Maschine", muscle: "Rücken" },
     { name: "Kniebeugen", muscle: "Beine" },
     { name: "Beinpresse", muscle: "Beine" },
     { name: "Ausfallschritte", muscle: "Beine" },
-    { name: "Beinst\u00fctz", muscle: "Beine" },
     { name: "Romanian Deadlift", muscle: "Beine" },
-    // Schultern
-    { name: "Schulterdr\u00fccken (LH)", muscle: "Schultern" },
-    { name: "Schulterdr\u00fccken Maschine", muscle: "Schultern" },
-    { name: "Seitelh\u00fcben", muscle: "Schultern" },
+    { name: "Schulterdrücken (LH)", muscle: "Schultern" },
+    { name: "Schulterdrücken Maschine", muscle: "Schultern" },
+    { name: "Seitenheben", muscle: "Schultern" },
     { name: "Face Pulls", muscle: "Schultern" },
-    // Bizeps
     { name: "Langhantel Curls", muscle: "Bizeps" },
     { name: "SZ-Curls", muscle: "Bizeps" },
     { name: "Hammer Curls", muscle: "Bizeps" },
     { name: "Konzentrations Curls", muscle: "Bizeps" },
-    // Trizeps
-    { name: "Trizepsdr\u00fccken (Stange)", muscle: "Trizeps" },
-    { name: "Trizepsdr\u00fccken (Seil)", muscle: "Trizeps" },
+    { name: "Trizepsdrücken (Stange)", muscle: "Trizeps" },
+    { name: "Trizepsdrücken (Seil)", muscle: "Trizeps" },
     { name: "Skull Crushers", muscle: "Trizeps" },
     { name: "Trizeps Kickback", muscle: "Trizeps" },
 ];
 
 const MUSCLE_ICONS: Record<string, string> = {
-    Brust: "🫁", R\u00fccken: "🔙", Beine: "🦵", Schultern: "🏈", Bizeps: "💪", Trizeps: "⚡"
+    "Brust": "🫁", "Rücken": "🔙", "Beine": "🦵", "Schultern": "🏈", "Bizeps": "💪", "Trizeps": "⚡"
 };
 
 export default function CreateWorkout() {
@@ -53,9 +46,9 @@ export default function CreateWorkout() {
     const [selected, setSelected] = useState<ExerciseEntry[]>([]);
     const [search, setSearch] = useState("");
     const [saving, setSaving] = useState(false);
-    const [muscleFilter, setMuscleFilter] = useState<string>("Alle");
+    const [muscleFilter, setMuscleFilter] = useState("Alle");
 
-    const muscles = ["Alle", ...Array.from(new Set(EXERCISE_DB.map(e => e.muscle)))];
+    const muscles = ["Alle", "Brust", "Rücken", "Beine", "Schultern", "Bizeps", "Trizeps"];
     const filtered = EXERCISE_DB.filter(e =>
         (muscleFilter === "Alle" || e.muscle === muscleFilter) &&
         e.name.toLowerCase().includes(search.toLowerCase())
@@ -63,17 +56,16 @@ export default function CreateWorkout() {
     const isAdded = (n: string) => selected.some(s => s.name === n);
 
     const addExercise = (n: string) => {
-        if (isAdded(n)) return;
+        if (isAdded(n)) { setSelected(p => p.filter(s => s.name !== n)); return; }
         setSelected(p => [...p, { name: n, sets: 3, reps: "8-12" }]);
     };
-    const removeExercise = (n: string) => setSelected(p => p.filter(s => s.name !== n));
-    const updateEntry = (idx: number, field: "sets" | "reps", value: string) => {
+    const updateEntry = (idx: number, field: "sets" | "reps", value: string) =>
         setSelected(p => p.map((e, i) => i === idx ? { ...e, [field]: field === "sets" ? parseInt(value) || 1 : value } : e));
-    };
+    const removeExercise = (n: string) => setSelected(p => p.filter(s => s.name !== n));
 
     const handleSave = async () => {
         if (!name.trim()) { alert("Bitte einen Namen eingeben"); return; }
-        if (selected.length === 0) { alert("Bitte mindestens eine \u00dcbung ausw\u00e4hlen"); return; }
+        if (selected.length === 0) { alert("Bitte mindestens eine Übung auswählen"); return; }
         setSaving(true);
         const { data: { user } } = await supabase.auth.getUser();
         if (!user) { alert("Nicht eingeloggt"); setSaving(false); return; }
@@ -99,14 +91,15 @@ export default function CreateWorkout() {
                 {/* Plan name */}
                 <div>
                     <label className="text-xs font-black text-muted uppercase tracking-widest">Name des Plans</label>
-                    <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="z.B. Push Day, Rumpf, ..." maxLength={30}
+                    <input type="text" value={name} onChange={e => setName(e.target.value)}
+                        placeholder="z.B. Push Day, Rumpf ..." maxLength={30}
                         className="mt-2 w-full rounded-2xl border border-card-border bg-card px-5 py-4 text-xl font-black text-foreground focus:border-accent focus:outline-none placeholder:text-muted/30" />
                 </div>
 
-                {/* Selected exercises */}
+                {/* Selected preview */}
                 {selected.length > 0 && (
                     <div className="space-y-3">
-                        <h3 className="text-xs font-black text-muted uppercase tracking-widest">Ausgew\u00e4hlt ({selected.length})</h3>
+                        <h3 className="text-xs font-black text-muted uppercase tracking-widest">Ausgewählt ({selected.length})</h3>
                         {selected.map((ex, idx) => (
                             <div key={ex.name} className="flex items-center gap-3 rounded-2xl border border-accent/30 bg-accent/5 px-4 py-3">
                                 <div className="flex-1">
@@ -114,12 +107,14 @@ export default function CreateWorkout() {
                                     <div className="flex items-center gap-3 mt-2">
                                         <div className="flex items-center gap-1">
                                             <span className="text-[10px] text-muted uppercase">Sets</span>
-                                            <input type="number" min={1} max={10} value={ex.sets} onChange={e => updateEntry(idx, "sets", e.target.value)}
+                                            <input type="number" min={1} max={10} value={ex.sets}
+                                                onChange={e => updateEntry(idx, "sets", e.target.value)}
                                                 className="w-10 rounded-lg border border-card-border bg-background px-1 py-0.5 text-center text-xs font-bold text-foreground focus:border-accent focus:outline-none" />
                                         </div>
                                         <div className="flex items-center gap-1">
                                             <span className="text-[10px] text-muted uppercase">Reps</span>
-                                            <input type="text" value={ex.reps} onChange={e => updateEntry(idx, "reps", e.target.value)}
+                                            <input type="text" value={ex.reps}
+                                                onChange={e => updateEntry(idx, "reps", e.target.value)}
                                                 className="w-14 rounded-lg border border-card-border bg-background px-1 py-0.5 text-center text-xs font-bold text-foreground focus:border-accent focus:outline-none" />
                                         </div>
                                     </div>
@@ -132,23 +127,23 @@ export default function CreateWorkout() {
                     </div>
                 )}
 
-                {/* Exercise database */}
+                {/* Exercise DB */}
                 <div className="space-y-4">
-                    <h3 className="text-xs font-black text-muted uppercase tracking-widest">\u00dcbungs-Datenbank</h3>
+                    <h3 className="text-xs font-black text-muted uppercase tracking-widest">Übungs-Datenbank</h3>
                     <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Suchen..."
                         className="w-full rounded-xl border border-card-border bg-card px-4 py-3 text-sm font-bold text-foreground focus:border-accent focus:outline-none" />
-                    {/* Muscle filter */}
                     <div className="flex gap-2 flex-wrap">
                         {muscles.map(m => (
                             <button key={m} onClick={() => setMuscleFilter(m)}
-                                className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest transition-colors ${muscleFilter === m ? 'bg-accent text-background' : 'bg-card-border/20 text-muted border border-card-border hover:text-foreground'}`}>
+                                className={`rounded-full px-3 py-1 text-[10px] font-black uppercase tracking-widest transition-colors ${
+                                    muscleFilter === m ? 'bg-accent text-background' : 'bg-card-border/20 text-muted border border-card-border hover:text-foreground'
+                                }`}>
                                 {MUSCLE_ICONS[m] || ""} {m}
                             </button>
                         ))}
                     </div>
-                    {/* Exercise list */}
                     <div className="divide-y divide-card-border rounded-2xl border border-card-border overflow-hidden">
-                        {filtered.length === 0 && <p className="p-4 text-center text-xs text-muted">Keine \u00dcbungen gefunden</p>}
+                        {filtered.length === 0 && <p className="p-4 text-center text-xs text-muted">Keine Übungen gefunden</p>}
                         {filtered.map(ex => (
                             <button key={ex.name} onClick={() => addExercise(ex.name)}
                                 className={`flex w-full items-center justify-between px-5 py-4 text-left transition-colors ${
@@ -167,6 +162,16 @@ export default function CreateWorkout() {
                     </div>
                 </div>
             </main>
+
+            {/* Save button bottom — shown when ready */}
+            {name.trim() && selected.length > 0 && (
+                <div className="fixed bottom-8 inset-x-0 flex justify-center px-6">
+                    <button onClick={handleSave} disabled={saving}
+                        className="btn-primary w-full max-w-sm flex items-center justify-center gap-3 text-lg disabled:opacity-50">
+                        {saving ? "Speichere..." : `"${name}" speichern (${selected.length} Übungen)`}
+                    </button>
+                </div>
+            )}
         </div>
     );
 }
