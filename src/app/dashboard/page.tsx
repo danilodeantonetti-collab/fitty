@@ -4,23 +4,51 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 
+function calcStreak(dates: string[]): number {
+    if (dates.length === 0) return 0;
+    const getWeek = (d: Date) => {
+        const jan1 = new Date(d.getFullYear(), 0, 1);
+        return Math.ceil(((d.getTime() - jan1.getTime()) / 86400000 + jan1.getDay() + 1) / 7);
+    };
+    const getWeekYear = (d: Date) => `${d.getFullYear()}-${getWeek(d)}`;
+    const weeks = [...new Set(dates.map(d => getWeekYear(new Date(d))))].sort().reverse();
+    const now = new Date();
+    let streak = 0;
+    let checkWeek = getWeekYear(now);
+    for (const w of weeks) {
+        if (w === checkWeek) {
+            streak++;
+            const prev = new Date(now);
+            prev.setDate(prev.getDate() - 7 * streak);
+            checkWeek = getWeekYear(prev);
+        } else break;
+    }
+    return streak;
+}
+
 export default function Dashboard() {
     const [nickname, setNickname] = useState("Athlete");
+    const [streak, setStreak] = useState(0);
+    const [totalSessions, setTotalSessions] = useState(0);
 
     useEffect(() => {
         const load = async () => {
             const { data: { user } } = await supabase.auth.getUser();
-            if (user) {
-                const { data } = await supabase.from('profiles').select('nickname').eq('id', user.id).single();
-                if (data?.nickname) setNickname(data.nickname);
+            if (!user) return;
+            const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single();
+            if (profile?.nickname) setNickname(profile.nickname);
+            const { data: sessions } = await supabase.from('sessions').select('date').eq('user_id', user.id).order('date', { ascending: false });
+            if (sessions) {
+                setTotalSessions(sessions.length);
+                setStreak(calcStreak(sessions.map(s => s.date)));
             }
         };
         load();
     }, []);
 
     const workouts = [
-        { id: "tag-a", name: "TAG A", description: "Squats, Deadlifts, Pull-ups, Incline Press", accent: "from-accent/20 to-accent/5" },
-        { id: "tag-b", name: "TAG B", description: "Squats, Bench Press, Rows, Overhead Press", accent: "from-blue-500/20 to-blue-500/5" },
+        { id: "tag-a", name: "TAG A", description: "Squats · Deadlifts · Pull-ups · Incline Press", accent: "from-accent/20 to-accent/5" },
+        { id: "tag-b", name: "TAG B", description: "Squats · Bench Press · Rows · Overhead Press", accent: "from-blue-500/20 to-blue-500/5" },
     ];
 
     return (
@@ -31,13 +59,33 @@ export default function Dashboard() {
                     <div className="flex h-full w-full items-center justify-center bg-accent/10 text-xs font-bold text-accent uppercase">{nickname[0]}</div>
                 </Link>
             </header>
+
             <main className="mx-auto max-w-lg px-6 pt-10">
-                <div className="mb-10 animate-in fade-in slide-in-from-left-4 duration-700">
+                <div className="mb-8 animate-in fade-in slide-in-from-left-4 duration-700">
                     <h2 className="text-4xl font-bold tracking-tight text-foreground">
-                        Hallo <span className="text-accent italic">{nickname},</span><br />Wähle dein Workout
+                        Hallo <span className="text-accent italic">{nickname},</span><br />W\u00e4hle dein Workout
                     </h2>
-                    <p className="mt-2 text-muted">Ready for your next session?</p>
+                    <p className="mt-2 text-muted text-sm">Ready for your next session?</p>
                 </div>
+
+                {/* Streak + Sessions bar */}
+                <div className="grid grid-cols-2 gap-4 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
+                    <div className="rounded-2xl border border-card-border bg-card-border/20 p-4 flex items-center gap-3">
+                        <span className="text-3xl">{streak >= 4 ? "🔥" : streak >= 2 ? "⚡" : "💪"}</span>
+                        <div>
+                            <p className="text-2xl font-black text-foreground">{streak} <span className="text-sm font-bold text-muted">Wochen</span></p>
+                            <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Streak</p>
+                        </div>
+                    </div>
+                    <div className="rounded-2xl border border-card-border bg-card-border/20 p-4 flex items-center gap-3">
+                        <span className="text-3xl">🏋️</span>
+                        <div>
+                            <p className="text-2xl font-black text-foreground">{totalSessions}</p>
+                            <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Sessions</p>
+                        </div>
+                    </div>
+                </div>
+
                 <div className="grid gap-6">
                     {workouts.map((workout, index) => (
                         <Link key={workout.id} href={`/workout/${workout.id}`}
@@ -49,11 +97,7 @@ export default function Dashboard() {
                                 <p className="text-sm leading-relaxed text-muted/80">{workout.description}</p>
                             </div>
                             <div className="absolute right-[-10px] top-[-10px] h-24 w-24 rounded-full bg-accent/10 blur-2xl group-hover:bg-accent/20 transition-all" />
-                            <div className="mt-6 flex items-center justify-between">
-                                <div className="flex -space-x-2">
-                                    {[1,2,3].map((i) => (<div key={i} className="h-6 w-6 rounded-full border border-background bg-card-border" />))}
-                                    <span className="pl-4 text-[10px] font-bold text-muted uppercase tracking-tighter">+12k Others</span>
-                                </div>
+                            <div className="mt-6 flex items-center justify-end">
                                 <div className="rounded-full bg-foreground p-2 text-background transition-transform group-hover:translate-x-1">
                                     <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
                                 </div>
@@ -62,6 +106,7 @@ export default function Dashboard() {
                     ))}
                 </div>
             </main>
+
             <nav className="fixed bottom-6 left-1/2 z-40 w-full max-w-sm -translate-x-1/2 px-6">
                 <div className="flex items-center justify-around rounded-full bg-background py-3 border border-card-border shadow-2xl">
                     <div className="p-2 text-accent"><svg className="h-6 w-6" fill="currentColor" viewBox="0 0 24 24"><path d="M10 20v-6h4v6h5v-8h3L12 3 2 12h3v8z" /></svg></div>
