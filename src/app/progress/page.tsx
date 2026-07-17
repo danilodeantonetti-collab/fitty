@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState, useMemo } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { useRouter } from "next/navigation";
+import { BodyWeightEntry, deleteBodyWeight, loadBodyWeight, rollingAverage, saveBodyWeight } from "@/lib/bodyWeight";
 
 const EXERCISE_MUSCLE_MAP: Record<string, string> = {
     "Kniebeugen": "Beine", "Kreuzheben": "R\u00fccken", "Klimmziehen eng": "R\u00fccken",
@@ -15,7 +16,67 @@ const EXERCISE_MUSCLE_MAP: Record<string, string> = {
 };
 
 type FilterType = "7D" | "30D" | "ALL";
-type ViewMode = "muscles" | "exercises" | "chart";
+type ViewMode = "muscles" | "exercises" | "chart" | "weight";
+
+// Körpergewicht: Tageswerte (dezent) + 7-Tage-Schnitt (Akzent)
+function WeightChart({ entries }: { entries: BodyWeightEntry[] }) {
+    const [hover, setHover] = useState<number | null>(null);
+    if (entries.length < 2) return <p className="text-center text-xs text-muted py-6">Mindestens 2 Einträge benötigt</p>;
+    const avg = rollingAverage(entries);
+    const W = 320, H = 170, L = 34, R = 12, T = 12, B = 22;
+    const all = [...entries.map(e => e.weight), ...avg.map(e => e.weight)];
+    const rawMin = Math.min(...all), rawMax = Math.max(...all);
+    const pad = Math.max((rawMax - rawMin) * 0.15, 0.5);
+    const minV = rawMin - pad, maxV = rawMax + pad, range = maxV - minV;
+    const t0 = new Date(entries[0].date + "T00:00:00").getTime();
+    const t1 = new Date(entries[entries.length - 1].date + "T00:00:00").getTime();
+    const span = Math.max(t1 - t0, 1);
+    const px = (date: string) => L + ((new Date(date + "T00:00:00").getTime() - t0) / span) * (W - L - R);
+    const py = (v: number) => T + ((maxV - v) / range) * (H - T - B);
+    const toPath = (list: BodyWeightEntry[]) => list.map((e, i) => `${i === 0 ? "M" : "L"} ${px(e.date).toFixed(1)} ${py(e.weight).toFixed(1)}`).join(" ");
+    const gridVals = [rawMin, (rawMin + rawMax) / 2, rawMax].map(v => Math.round(v * 10) / 10);
+    const fmt = (d: string) => new Date(d + "T00:00:00").toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" });
+    const onMove = (clientX: number, rect: DOMRect) => {
+        const x = ((clientX - rect.left) / rect.width) * W;
+        let best = 0, bd = Infinity;
+        entries.forEach((e, i) => { const d = Math.abs(px(e.date) - x); if (d < bd) { bd = d; best = i; } });
+        setHover(best);
+    };
+    const h = hover != null ? entries[hover] : null;
+    const hAvg = hover != null ? avg[hover] : null;
+    return (
+        <div>
+            <div className="flex items-center gap-4 mb-2">
+                <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted"><span className="h-2 w-2 rounded-full bg-accent inline-block" /> Ø 7 Tage</span>
+                <span className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-widest text-muted"><span className="h-2 w-2 rounded-full bg-muted inline-block" /> Täglich</span>
+            </div>
+            <svg viewBox={`0 0 ${W} ${H}`} className="w-full touch-none" style={{ height: 170 }}
+                onPointerMove={(e) => onMove(e.clientX, (e.currentTarget as SVGSVGElement).getBoundingClientRect())}
+                onPointerLeave={() => setHover(null)}>
+                {gridVals.map((v) => (
+                    <g key={v}>
+                        <line x1={L} x2={W - R} y1={py(v)} y2={py(v)} stroke="rgba(255,255,255,0.08)" strokeWidth="1" />
+                        <text x={L - 5} y={py(v) + 3} textAnchor="end" fontSize="8" fill="#666" fontWeight="bold">{v}</text>
+                    </g>
+                ))}
+                <path d={toPath(entries)} fill="none" stroke="#666" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" opacity="0.8" />
+                <path d={toPath(avg)} fill="none" stroke="#e2ff00" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+                {h && hAvg && (
+                    <g>
+                        <line x1={px(h.date)} x2={px(h.date)} y1={T} y2={H - B} stroke="rgba(255,255,255,0.25)" strokeWidth="1" />
+                        <circle cx={px(h.date)} cy={py(h.weight)} r="4" fill="#666" stroke="#050505" strokeWidth="2" />
+                        <circle cx={px(hAvg.date)} cy={py(hAvg.weight)} r="4" fill="#e2ff00" stroke="#050505" strokeWidth="2" />
+                    </g>
+                )}
+                <text x={L} y={H - 6} textAnchor="start" fontSize="8" fill="#666" fontWeight="bold">{fmt(entries[0].date)}</text>
+                <text x={W - R} y={H - 6} textAnchor="end" fontSize="8" fill="#666" fontWeight="bold">{fmt(entries[entries.length - 1].date)}</text>
+            </svg>
+            <div className="h-5 text-center text-[11px] font-bold text-foreground">
+                {h && hAvg ? `${fmt(h.date)} · ${h.weight} kg (Ø ${hAvg.weight} kg)` : ""}
+            </div>
+        </div>
+    );
+}
 
 // Simple SVG line chart
 function LineChart({ data }: { data: { label: string; value: number }[] }) {
@@ -59,22 +120,50 @@ export default function StatisticsDashboard() {
     const [filter, setFilter] = useState<FilterType>("ALL");
     const [viewMode, setViewMode] = useState<ViewMode>("muscles");
     const [selectedExercise, setSelectedExercise] = useState<string>("");
+    const [userId, setUserId] = useState<string>("");
+    const [weights, setWeights] = useState<BodyWeightEntry[]>([]);
+    const [weightCloud, setWeightCloud] = useState(true);
+    const [newWeight, setNewWeight] = useState("");
+    const [weightDate, setWeightDate] = useState(() => new Date().toISOString().split("T")[0]);
+    const [savingWeight, setSavingWeight] = useState(false);
 
     useEffect(() => {
         const fetchStats = async () => {
             try {
                 const { data: { user } } = await supabase.auth.getUser();
                 if (!user) { router.push("/auth/login"); return; }
+                setUserId(user.id);
                 const { data, error } = await supabase.from('sessions')
-                    .select('id, date, sets ( weight, reps, exercises ( name ) )')
+                    .select('id, date, sets ( weight, reps, exercise_name, exercises ( name ) )')
                     .eq('user_id', user.id).order('date', { ascending: true });
                 if (error) throw error;
                 if (data) setStatsData(data);
+                const bw = await loadBodyWeight(user.id);
+                setWeights(bw.entries);
+                setWeightCloud(bw.cloud);
             } catch (err) { console.error(err); }
             finally { setLoading(false); }
         };
         fetchStats();
     }, [router]);
+
+    const addWeight = async () => {
+        const w = parseFloat(newWeight.replace(",", "."));
+        if (!w || w < 20 || w > 400 || !userId) return;
+        setSavingWeight(true);
+        const entry = { date: weightDate, weight: Math.round(w * 10) / 10 };
+        const cloud = await saveBodyWeight(userId, entry);
+        setWeightCloud(cloud);
+        setWeights(prev => [...prev.filter(e => e.date !== entry.date), entry].sort((a, b) => a.date.localeCompare(b.date)));
+        setNewWeight("");
+        setSavingWeight(false);
+    };
+
+    const removeWeight = async (date: string) => {
+        if (!userId) return;
+        await deleteBodyWeight(userId, date);
+        setWeights(prev => prev.filter(e => e.date !== date));
+    };
 
     const processedStats = useMemo(() => {
         const now = new Date(); const cutoff = new Date();
@@ -91,7 +180,7 @@ export default function StatisticsDashboard() {
             const month = new Date(s.date).toLocaleDateString('de-DE', { month: 'short' });
             s.sets.forEach((set: any) => {
                 const v = (set.weight || 0) * (set.reps || 0); totalVolume += v;
-                const n = set.exercises?.name;
+                const n = set.exercises?.name ?? set.exercise_name;
                 if (n) {
                     muscleVol[EXERCISE_MUSCLE_MAP[n] || "Andere"] = (muscleVol[EXERCISE_MUSCLE_MAP[n] || "Andere"] || 0) + v;
                     exVol[n] = (exVol[n] || 0) + v;
@@ -150,16 +239,16 @@ export default function StatisticsDashboard() {
 
                 {/* View toggle */}
                 <div className="flex rounded-full border border-card-border overflow-hidden">
-                    {(["muscles", "exercises", "chart"] as ViewMode[]).map((m) => (
+                    {(["muscles", "exercises", "chart", "weight"] as ViewMode[]).map((m) => (
                         <button key={m} onClick={() => setViewMode(m)}
                             className={`flex-1 py-2 text-[10px] font-black tracking-widest uppercase transition-colors ${viewMode === m ? 'bg-accent text-background' : 'text-muted hover:text-foreground'}`}>
-                            {m === "muscles" ? "Muskeln" : m === "exercises" ? "\u00dcbungen" : "Verlauf"}
+                            {m === "muscles" ? "Muskeln" : m === "exercises" ? "\u00dcbungen" : m === "chart" ? "Verlauf" : "K\u00f6rper"}
                         </button>
                     ))}
                 </div>
 
                 {/* Bars */}
-                {viewMode !== "chart" && (
+                {(viewMode === "muscles" || viewMode === "exercises") && (
                     <div className="rounded-3xl p-6 space-y-5 border border-card-border bg-card-border/20">
                         {bars.length === 0
                             ? <p className="text-center text-xs text-muted font-bold uppercase py-4">Keine Daten</p>
@@ -195,6 +284,86 @@ export default function StatisticsDashboard() {
                         {chartExercise && <LineChart data={chartData} />}
                     </div>
                 )}
+
+                {/* Körpergewicht */}
+                {viewMode === "weight" && (() => {
+                    const now = new Date(); const cutoff = new Date();
+                    if (filter === "7D") cutoff.setDate(now.getDate() - 7);
+                    else if (filter === "30D") cutoff.setDate(now.getDate() - 30);
+                    else cutoff.setFullYear(1970);
+                    const shown = weights.filter(e => new Date(e.date + "T00:00:00") >= cutoff);
+                    const avgAll = rollingAverage(weights);
+                    const last = weights[weights.length - 1];
+                    const lastAvg = avgAll[avgAll.length - 1];
+                    const weekAgo = new Date(); weekAgo.setDate(weekAgo.getDate() - 7);
+                    const prevAvg = [...avgAll].reverse().find(e => new Date(e.date + "T00:00:00") <= weekAgo);
+                    const delta = lastAvg && prevAvg ? Math.round((lastAvg.weight - prevAvg.weight) * 10) / 10 : null;
+                    return (
+                        <div className="space-y-6">
+                            {!weightCloud && (
+                                <p className="rounded-xl border border-card-border bg-card px-4 py-3 text-[11px] leading-relaxed text-muted">
+                                    ⚠️ Nur lokal gespeichert — die Tabelle <span className="font-bold text-foreground">body_weight</span> fehlt noch in Supabase.
+                                    Führe einmalig das SQL aus <span className="font-bold text-foreground">SETUP_SUPABASE.sql</span> aus, dann synchronisiert alles automatisch.
+                                </p>
+                            )}
+
+                            {/* Eintrag */}
+                            <div className="rounded-3xl border border-card-border bg-card-border/20 p-4">
+                                <div className="flex items-center gap-2">
+                                    <input type="date" value={weightDate} onChange={e => setWeightDate(e.target.value)}
+                                        className="rounded-xl border border-card-border bg-card p-3 text-xs font-bold text-foreground focus:border-accent focus:outline-none" />
+                                    <input type="number" inputMode="decimal" step="0.1" placeholder="KG" value={newWeight}
+                                        onChange={e => setNewWeight(e.target.value)}
+                                        onKeyDown={e => { if (e.key === "Enter") addWeight(); }}
+                                        className="w-full flex-1 rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none" />
+                                    <button onClick={addWeight} disabled={savingWeight || !newWeight}
+                                        className="rounded-xl bg-accent px-4 py-3 text-sm font-black text-background disabled:opacity-40">+</button>
+                                </div>
+                            </div>
+
+                            {/* Kennzahlen */}
+                            {last && (
+                                <div className="grid grid-cols-3 gap-3">
+                                    <div className="rounded-2xl border border-card-border bg-card-border/20 p-4 text-center">
+                                        <span className="text-xl font-black text-foreground">{last.weight}</span>
+                                        <p className="mt-1 text-[9px] font-bold text-muted uppercase tracking-widest">Aktuell kg</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-card-border bg-card-border/20 p-4 text-center">
+                                        <span className="text-xl font-black text-accent">{lastAvg?.weight ?? "—"}</span>
+                                        <p className="mt-1 text-[9px] font-bold text-muted uppercase tracking-widest">Ø 7 Tage</p>
+                                    </div>
+                                    <div className="rounded-2xl border border-card-border bg-card-border/20 p-4 text-center">
+                                        <span className="text-xl font-black text-foreground">{delta == null ? "—" : `${delta > 0 ? "▲" : delta < 0 ? "▼" : ""} ${Math.abs(delta)}`}</span>
+                                        <p className="mt-1 text-[9px] font-bold text-muted uppercase tracking-widest">vs. Vorwoche</p>
+                                    </div>
+                                </div>
+                            )}
+
+                            {/* Verlauf */}
+                            <div className="rounded-3xl border border-card-border bg-card-border/20 p-6">
+                                <h3 className="mb-3 text-sm font-black text-muted uppercase tracking-widest">Körpergewicht</h3>
+                                <WeightChart entries={shown} />
+                            </div>
+
+                            {/* Letzte Einträge */}
+                            {weights.length > 0 && (
+                                <div className="rounded-3xl border border-card-border bg-card-border/20 p-4 space-y-1">
+                                    {[...weights].reverse().slice(0, 10).map(e => (
+                                        <div key={e.date} className="flex items-center justify-between rounded-xl px-3 py-2 hover:bg-card">
+                                            <span className="text-xs font-bold text-muted">{new Date(e.date + "T00:00:00").toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit" })}</span>
+                                            <div className="flex items-center gap-3">
+                                                <span className="text-sm font-black text-foreground">{e.weight} kg</span>
+                                                <button onClick={() => removeWeight(e.date)} aria-label="Eintrag löschen" className="text-muted hover:text-red-400 transition-colors">
+                                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            )}
+                        </div>
+                    );
+                })()}
             </main>
 
             <nav className="fixed bottom-6 left-1/2 z-40 w-full max-w-sm -translate-x-1/2 px-6">

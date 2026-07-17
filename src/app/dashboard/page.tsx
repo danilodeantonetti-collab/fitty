@@ -3,6 +3,8 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
+import { getMtmtProgress, MtmtProgress } from "@/lib/mtmtProgress";
+import { getMtmtMonth } from "@/data/mtmt";
 
 function calcStreak(dates: string[]): number {
     if (dates.length === 0) return 0;
@@ -31,8 +33,10 @@ export default function Dashboard() {
     const [streak, setStreak] = useState(0);
     const [totalSessions, setTotalSessions] = useState(0);
     const [customWorkouts, setCustomWorkouts] = useState<{ id: string; name: string }[]>([]);
+    const [mtmt, setMtmt] = useState<MtmtProgress>({ month: 1, week: 1 });
 
     useEffect(() => {
+        setMtmt(getMtmtProgress());
         const load = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
@@ -91,6 +95,24 @@ export default function Dashboard() {
                 </div>
 
                 <div className="grid gap-6">
+                    {/* MTMT Blueprint Programm */}
+                    <Link href="/program"
+                        className="group relative overflow-hidden rounded-2xl border border-accent/40 bg-gradient-to-br from-accent/15 to-accent/5 p-6 transition-all hover:scale-[1.02] active:scale-[0.98]">
+                        <div className="relative z-10 flex flex-col gap-2">
+                            <span className="text-xs font-bold tracking-widest text-accent uppercase">12-Monats-Programm</span>
+                            <h3 className="text-2xl font-black tracking-tighter text-foreground group-hover:text-accent transition-colors">MTMT Blueprint 2.0</h3>
+                            <p className="text-sm leading-relaxed text-muted/80">
+                                Monat {mtmt.month} · Woche {mtmt.week} · {getMtmtMonth(mtmt.month)?.phase ?? ""}
+                            </p>
+                        </div>
+                        <div className="absolute right-[-10px] top-[-10px] h-24 w-24 rounded-full bg-accent/10 blur-2xl group-hover:bg-accent/20 transition-all" />
+                        <div className="mt-6 flex items-center justify-end">
+                            <div className="rounded-full bg-accent p-2 text-background transition-transform group-hover:translate-x-1">
+                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
+                            </div>
+                        </div>
+                    </Link>
+
                     {/* Create new workout — top */}
                     <Link href="/workout/create"
                         className="group flex items-center justify-center gap-3 rounded-2xl border-2 border-dashed border-card-border p-5 text-muted transition-all hover:border-accent hover:text-accent">

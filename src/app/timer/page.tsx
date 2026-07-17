@@ -1,10 +1,25 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect } from "react";
 import { useTimer } from "@/context/TimerContext";
 
 export default function TimerPage() {
     const { phase, timeLeft, currentSet, workTime, restTime, setWorkTime, setRestTime, start, stop } = useTimer();
+
+    // Voreinstellung aus einem Workout übernehmen (z. B. 10s ON / 20s OFF aus dem MTMT-Intervall)
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem("fitty_timer_preset");
+            if (raw) {
+                localStorage.removeItem("fitty_timer_preset");
+                const p = JSON.parse(raw);
+                if (p.work >= 5 && p.work <= 3600) setWorkTime(p.work);
+                if (p.rest >= 5 && p.rest <= 3600) setRestTime(p.rest);
+            }
+        } catch {}
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, []);
 
     const formatTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, '0')}`;
     const total = phase === "WORK" ? workTime : restTime;
