@@ -5,7 +5,11 @@ import { NextResponse, type NextRequest } from 'next/server'
 export async function GET(request: NextRequest) {
     const { searchParams, origin } = new URL(request.url)
     const code = searchParams.get('code')
-    const next = searchParams.get('next') ?? '/dashboard'
+    const rawNext = searchParams.get('next') ?? '/dashboard'
+    // nur app-interne Pfade zulassen (kein Open Redirect via "//evil.com" o. ä.)
+    const next = rawNext.startsWith('/') && !rawNext.startsWith('//') && !rawNext.includes('\\')
+        ? rawNext
+        : '/dashboard'
 
     if (code) {
         const cookieStore = await cookies()
@@ -35,5 +39,5 @@ export async function GET(request: NextRequest) {
         }
     }
 
-    return NextResponse.redirect(`${origin}/auth/auth-code-error`)
+    return NextResponse.redirect(`${origin}/auth/login?error=callback`)
 }

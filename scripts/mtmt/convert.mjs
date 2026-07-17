@@ -1,9 +1,10 @@
 // Converts extracted/plan.json into src/data/mtmt.ts for the FITTY app
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 const { months, infoVideos } = JSON.parse(fs.readFileSync('./extracted/plan.json', 'utf8'));
-const OUT_FILE = 'C:/Users/danie/dev/fitty/src/data/mtmt.ts';
+const OUT_FILE = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../src/data/mtmt.ts');
 
 // Mac-Ordnernamen kamen als Mojibake an: UTF-8-Bytes des kombinierenden
 // Tremas (CC 88) wurden als CP437 "╠ê" ausgepackt -> zurück zum Umlaut.

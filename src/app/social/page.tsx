@@ -57,7 +57,8 @@ export default function SocialPage() {
     };
 
     const acceptRequest = async (friendshipId: string, requesterId: string) => {
-        await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId);
+        // nur annehmen, wenn man selbst der Empfänger der Anfrage ist
+        await supabase.from('friendships').update({ status: 'accepted' }).eq('id', friendshipId).eq('addressee_id', user.id);
         await loadFriends(user.id);
         // Build quick leaderboard
         const { data: sessions } = await supabase.from('sessions').select('user_id').in('user_id', [user.id, requesterId]);

@@ -2,7 +2,7 @@
 
 import { useEffect } from "react";
 
-function toEmbedUrl(url: string): string {
+function toEmbedUrl(url: string): string | null {
     const listMatch = url.match(/[?&]list=([\w-]+)/);
     if (listMatch && url.includes("playlist")) {
         return `https://www.youtube.com/embed/videoseries?list=${listMatch[1]}`;
@@ -13,10 +13,12 @@ function toEmbedUrl(url: string): string {
         if (listMatch) src += `&list=${listMatch[1]}`;
         return src;
     }
-    return url;
+    return null; // alles außer erkanntem YouTube wird nicht eingebettet
 }
 
 export default function VideoModal({ url, title, onClose }: { url: string; title: string; onClose: () => void }) {
+    const embedUrl = toEmbedUrl(url);
+
     useEffect(() => {
         const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
         window.addEventListener("keydown", onKey);
@@ -38,13 +40,17 @@ export default function VideoModal({ url, title, onClose }: { url: string; title
                     </button>
                 </div>
                 <div className="relative w-full overflow-hidden rounded-2xl border border-card-border bg-black" style={{ paddingTop: "56.25%" }}>
-                    <iframe
-                        src={toEmbedUrl(url)}
-                        title={title}
-                        className="absolute inset-0 h-full w-full"
-                        allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
-                        allowFullScreen
-                    />
+                    {embedUrl ? (
+                        <iframe
+                            src={embedUrl}
+                            title={title}
+                            className="absolute inset-0 h-full w-full"
+                            allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
+                            allowFullScreen
+                        />
+                    ) : (
+                        <p className="absolute inset-0 flex items-center justify-center text-xs text-muted">Video-Link wird nicht unterstützt</p>
+                    )}
                 </div>
             </div>
         </div>

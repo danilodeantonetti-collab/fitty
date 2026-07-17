@@ -153,7 +153,8 @@ export default function MtmtWorkout() {
             if (sessionErr) throw sessionErr;
 
             const { data: prevSets } = await supabase
-                .from("sets").select("exercise_name, weight")
+                .from("sets").select("exercise_name, weight, sessions!inner(user_id)")
+                .eq("sessions.user_id", user.id)
                 .not("exercise_name", "is", null);
             const allTimeBest: Record<string, number> = {};
             (prevSets || []).forEach((s: any) => {

@@ -102,10 +102,11 @@ export default function CustomWorkoutSession() {
                 .single();
             if (sessionErr) throw sessionErr;
 
-            // Detect PRs: fetch previous best weight per exercise_name
+            // Detect PRs: fetch previous best weight per exercise_name (nur eigene Sessions)
             const { data: prevSets } = await supabase
                 .from("sets")
-                .select("exercise_name, weight")
+                .select("exercise_name, weight, sessions!inner(user_id)")
+                .eq("sessions.user_id", user.id)
                 .not("exercise_name", "is", null);
 
             const allTimeBest: Record<string, number> = {};
