@@ -4,19 +4,21 @@ import { useState } from "react";
 import Link from "next/link";
 import { supabase } from "@/lib/supabaseClient";
 
-export default function LoginPage() {
+export default function ForgotPasswordPage() {
     const [email, setEmail] = useState("");
-    const [password, setPassword] = useState("");
     const [loading, setLoading] = useState(false);
     const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-    const handleLogin = async (e: React.FormEvent) => {
+    const handleReset = async (e: React.FormEvent) => {
         e.preventDefault();
         setLoading(true);
         setMessage(null);
-        const { error } = await supabase.auth.signInWithPassword({ email, password });
-        if (error) { setMessage({ type: "error", text: error.message }); setLoading(false); }
-        else { setMessage({ type: "success", text: "Erfolgreich eingeloggt!" }); window.location.assign('/dashboard'); }
+        const { error } = await supabase.auth.resetPasswordForEmail(email, {
+            redirectTo: `${window.location.origin}/auth/update-password`,
+        });
+        if (error) setMessage({ type: "error", text: error.message });
+        else setMessage({ type: "success", text: "E-Mail verschickt! Prüfe dein Postfach (auch Spam) und klicke den Link." });
+        setLoading(false);
     };
 
     return (
@@ -26,34 +28,26 @@ export default function LoginPage() {
                     <Link href="/" className="text-4xl font-black tracking-tighter text-foreground">
                         FIT<span className="text-accent italic">TY</span>
                     </Link>
-                    <h2 className="mt-6 text-2xl font-bold tracking-tight text-foreground">Welcome Back</h2>
-                    <p className="mt-2 text-sm text-muted">Log in to continue your progress.</p>
+                    <h2 className="mt-6 text-2xl font-bold tracking-tight text-foreground">Passwort vergessen</h2>
+                    <p className="mt-2 text-sm text-muted">Wir schicken dir einen Link zum Zurücksetzen.</p>
                 </div>
 
                 <div className="glass mt-8 rounded-2xl p-8 neon-shadow">
-                    <form className="space-y-5" onSubmit={handleLogin}>
+                    <form className="space-y-5" onSubmit={handleReset}>
                         <div>
                             <label className="block text-xs font-bold uppercase tracking-widest text-muted">Email</label>
                             <input type="email" required className="mt-2 w-full rounded-xl border border-card-border bg-background/50 px-4 py-3 text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent transition-all" placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-                        </div>
-                        <div>
-                            <label className="block text-xs font-bold uppercase tracking-widest text-muted">Passwort</label>
-                            <input type="password" required className="mt-2 w-full rounded-xl border border-card-border bg-background/50 px-4 py-3 text-foreground focus:border-accent focus:outline-none focus:ring-1 focus:ring-accent transition-all" placeholder="••••••••" value={password} onChange={(e) => setPassword(e.target.value)} />
                         </div>
                         {message && (
                             <div className={`rounded-lg p-3 text-sm font-medium ${message.type === 'success' ? 'bg-accent/10 text-accent' : 'bg-red-500/10 text-red-400'}`}>{message.text}</div>
                         )}
                         <button type="submit" disabled={loading} className="btn-primary w-full disabled:opacity-50 disabled:scale-100">
-                            {loading ? "Einloggen..." : "Login"}
+                            {loading ? "Sende..." : "Reset-Link senden"}
                         </button>
                     </form>
 
-                    <div className="mt-6 space-y-2 text-center text-sm">
-                        <div>
-                            <span className="text-muted">Noch kein Account? </span>
-                            <Link href="/auth/signup" className="font-bold text-accent hover:underline">Registrieren</Link>
-                        </div>
-                        <Link href="/auth/forgot-password" className="block font-bold text-muted hover:text-accent hover:underline">Passwort vergessen?</Link>
+                    <div className="mt-6 text-center text-sm">
+                        <Link href="/auth/login" className="font-bold text-accent hover:underline">Zurück zum Login</Link>
                     </div>
                 </div>
             </div>
