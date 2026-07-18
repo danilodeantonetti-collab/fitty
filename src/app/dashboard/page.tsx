@@ -82,11 +82,6 @@ export default function Dashboard() {
         load();
     }, []);
 
-    const defaultWorkouts = [
-        { id: "tag-a", name: "Workout Grund\u00fcbungen Tag 1", description: "Squats \xB7 Deadlifts \xB7 Pull-ups \xB7 Incline Press", accent: "from-accent/20 to-accent/5" },
-        { id: "tag-b", name: "Workout Grund\u00fcbungen Tag 2", description: "Squats \xB7 Bench Press \xB7 Rows \xB7 Overhead Press", accent: "from-blue-500/20 to-blue-500/5" },
-    ];
-
     return (
         <div className="min-h-screen bg-background pb-24">
             <header className="sticky top-0 z-30 flex items-center justify-between border-b border-card-border bg-background/80 px-6 py-4 backdrop-blur-md">
@@ -124,29 +119,25 @@ export default function Dashboard() {
                 </div>
 
                 <div className="grid gap-6">
-                    {/* Diese Woche: aktueller Stand MTMT + Rad */}
+                    {/* Diese Woche: MTMT + Rad im großen Karten-Stil */}
                     {(() => {
                         const month = getMtmtMonth(mtmt.month);
                         const days = month?.days.map((d) => d.day) ?? [1, 2, 3];
                         const nextOpen = days.find((d) => !isMtmtDone(mtmtDone, mtmt.month, mtmt.week, d));
                         return (
-                            <div className="rounded-2xl border border-card-border bg-card-border/10 p-5">
-                                <p className="mb-4 text-[10px] font-bold uppercase tracking-widest text-muted">Diese Woche</p>
-
-                                <Link href={nextOpen ? `/program/${mtmt.month}/${nextOpen}` : `/program/${mtmt.month}`} className="group block">
-                                    <div className="flex items-center justify-between gap-3">
-                                        <div className="min-w-0">
-                                            <h3 className="text-lg font-black tracking-tighter text-foreground group-hover:text-accent transition-colors">MTMT Blueprint</h3>
-                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
-                                                Monat {mtmt.month} · Woche {mtmt.week} · {month?.phase ?? ""}
-                                            </p>
-                                        </div>
-                                        <div className="flex flex-shrink-0 items-center gap-1.5">
+                            <>
+                                <Link href={nextOpen ? `/program/${mtmt.month}/${nextOpen}` : `/program/${mtmt.month}`}
+                                    className="group relative overflow-hidden rounded-2xl border border-card-border bg-gradient-to-br from-accent/20 to-accent/5 p-6 transition-all hover:scale-[1.02] active:scale-[0.98]">
+                                    <div className="relative z-10 flex flex-col gap-2">
+                                        <span className="text-xs font-bold tracking-widest text-accent uppercase">Diese Woche · Monat {mtmt.month} · Woche {mtmt.week}</span>
+                                        <h3 className="text-2xl font-black tracking-tighter text-foreground group-hover:text-accent transition-colors">MTMT Blueprint</h3>
+                                        <p className="text-sm leading-relaxed text-muted/80">{month?.phase ?? ""}</p>
+                                        <div className="mt-1 flex items-center gap-1.5">
                                             {days.map((d) => {
                                                 const done = isMtmtDone(mtmtDone, mtmt.month, mtmt.week, d);
                                                 return (
                                                     <span key={d}
-                                                        className={`flex h-8 w-8 items-center justify-center rounded-full border text-[11px] font-black ${done ? "border-accent bg-accent/15 text-accent" : d === nextOpen ? "border-foreground/40 text-foreground" : "border-card-border text-muted"}`}>
+                                                        className={`flex h-8 w-8 items-center justify-center rounded-full border text-[11px] font-black ${done ? "border-accent bg-accent/20 text-accent" : d === nextOpen ? "border-foreground/50 text-foreground" : "border-card-border text-muted"}`}>
                                                         {done ? (
                                                             <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
                                                         ) : `T${d}`}
@@ -155,27 +146,36 @@ export default function Dashboard() {
                                             })}
                                         </div>
                                     </div>
-                                </Link>
-
-                                <div className="my-4 border-t border-card-border" />
-
-                                <Link href="/cardio" className="group flex items-center justify-between gap-3">
-                                    <div className="flex items-center gap-3">
-                                        <BikeIcon className="h-6 w-6 text-muted" />
-                                        <div>
-                                            <h3 className="text-lg font-black tracking-tighter text-foreground group-hover:text-accent transition-colors">Rad</h3>
-                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted">1× pro Woche</p>
+                                    <div className="absolute right-[-10px] top-[-10px] h-24 w-24 rounded-full bg-accent/10 blur-2xl group-hover:bg-accent/20 transition-all" />
+                                    <div className="mt-4 flex items-center justify-end">
+                                        <div className="rounded-full bg-foreground p-2 text-background transition-transform group-hover:translate-x-1">
+                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
                                         </div>
                                     </div>
-                                    <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border ${bikeThisWeek ? "border-accent bg-accent/15 text-accent" : "border-card-border text-muted"}`}>
-                                        {bikeThisWeek ? (
-                                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
-                                        ) : (
-                                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
-                                        )}
-                                    </span>
                                 </Link>
-                            </div>
+
+                                <Link href="/cardio"
+                                    className="group relative overflow-hidden rounded-2xl border border-card-border bg-gradient-to-br from-blue-500/20 to-blue-500/5 p-6 transition-all hover:scale-[1.02] active:scale-[0.98]">
+                                    <div className="relative z-10 flex flex-col gap-2">
+                                        <span className="text-xs font-bold tracking-widest text-accent uppercase">Diese Woche · 1× pro Woche</span>
+                                        <h3 className="text-2xl font-black tracking-tighter text-foreground group-hover:text-accent transition-colors">Rad</h3>
+                                        <p className="text-sm leading-relaxed text-muted/80">{bikeThisWeek == null ? "" : bikeThisWeek > 0 ? "Diese Woche erledigt" : "Noch offen"}</p>
+                                    </div>
+                                    <div className="absolute right-[-10px] top-[-10px] h-24 w-24 rounded-full bg-blue-500/10 blur-2xl group-hover:bg-blue-500/20 transition-all" />
+                                    <div className="mt-4 flex items-center justify-between">
+                                        <span className={`flex h-8 w-8 items-center justify-center rounded-full border ${bikeThisWeek ? "border-accent bg-accent/20 text-accent" : "border-card-border text-muted"}`}>
+                                            {bikeThisWeek ? (
+                                                <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                            ) : (
+                                                <BikeIcon className="h-4 w-4" />
+                                            )}
+                                        </span>
+                                        <div className="rounded-full bg-foreground p-2 text-background transition-transform group-hover:translate-x-1">
+                                            <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
+                                        </div>
+                                    </div>
+                                </Link>
+                            </>
                         );
                     })()}
 
@@ -202,23 +202,6 @@ export default function Dashboard() {
                         </Link>
                     ))}
 
-                    {/* Default plans */}
-                    {defaultWorkouts.map((workout) => (
-                        <Link key={workout.id} href={`/workout/${workout.id}`}
-                            className={`group relative overflow-hidden rounded-2xl border border-card-border bg-gradient-to-br ${workout.accent} p-6 transition-all hover:scale-[1.02] active:scale-[0.98]`}>
-                            <div className="relative z-10 flex flex-col gap-2">
-                                <span className="text-xs font-bold tracking-widest text-accent uppercase">Standard Plan</span>
-                                <h3 className="text-2xl font-black tracking-tighter text-foreground group-hover:text-accent transition-colors">{workout.name}</h3>
-                                <p className="text-sm leading-relaxed text-muted/80">{workout.description}</p>
-                            </div>
-                            <div className="absolute right-[-10px] top-[-10px] h-24 w-24 rounded-full bg-accent/10 blur-2xl group-hover:bg-accent/20 transition-all" />
-                            <div className="mt-6 flex items-center justify-end">
-                                <div className="rounded-full bg-foreground p-2 text-background transition-transform group-hover:translate-x-1">
-                                    <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
-                                </div>
-                            </div>
-                        </Link>
-                    ))}
                 </div>
             </main>
 
