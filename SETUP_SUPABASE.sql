@@ -225,3 +225,33 @@ create policy "body_weight_update_own" on public.body_weight
 drop policy if exists "body_weight_delete_own" on public.body_weight;
 create policy "body_weight_delete_own" on public.body_weight
     for delete using (auth.uid() = user_id);
+-- FITTY: Cardio-Sessions (Radfahren etc.)
+create table if not exists public.cardio_sessions (
+    id uuid primary key default gen_random_uuid(),
+    user_id uuid not null references auth.users (id) on delete cascade,
+    date date not null,
+    activity text not null default 'Radfahren',
+    distance_km numeric(6, 2),
+    duration_min integer,
+    route text,
+    created_at timestamptz not null default now()
+);
+
+alter table public.cardio_sessions enable row level security;
+
+drop policy if exists "cardio_select_own" on public.cardio_sessions;
+create policy "cardio_select_own" on public.cardio_sessions
+    for select using (auth.uid() = user_id);
+
+drop policy if exists "cardio_insert_own" on public.cardio_sessions;
+create policy "cardio_insert_own" on public.cardio_sessions
+    for insert with check (auth.uid() = user_id);
+
+drop policy if exists "cardio_update_own" on public.cardio_sessions;
+create policy "cardio_update_own" on public.cardio_sessions
+    for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "cardio_delete_own" on public.cardio_sessions;
+create policy "cardio_delete_own" on public.cardio_sessions
+    for delete using (auth.uid() = user_id);
+

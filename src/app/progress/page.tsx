@@ -121,6 +121,7 @@ export default function StatisticsDashboard() {
     const [viewMode, setViewMode] = useState<ViewMode>("muscles");
     const [selectedExercise, setSelectedExercise] = useState<string>("");
     const [userId, setUserId] = useState<string>("");
+    const [cardio, setCardio] = useState<any[]>([]);
     const [weights, setWeights] = useState<BodyWeightEntry[]>([]);
     const [weightCloud, setWeightCloud] = useState(true);
     const [newWeight, setNewWeight] = useState("");
@@ -141,6 +142,13 @@ export default function StatisticsDashboard() {
                 const bw = await loadBodyWeight(user.id);
                 setWeights(bw.entries);
                 setWeightCloud(bw.cloud);
+                const { data: rides } = await supabase
+                    .from('cardio_sessions')
+                    .select('id, date, activity, distance_km, duration_min, route')
+                    .eq('user_id', user.id)
+                    .order('date', { ascending: false })
+                    .limit(200);
+                setCardio(rides ?? []);
             } catch (err) { console.error(err); }
             finally { setLoading(false); }
         };
@@ -291,14 +299,34 @@ export default function StatisticsDashboard() {
                     if (filter === "7D") cutoff.setDate(now.getDate() - 7);
                     else if (filter === "30D") cutoff.setDate(now.getDate() - 30);
                     else cutoff.setFullYear(1970);
-                    const sessions = statsData
+                    const gymItems = statsData
                         .filter(s => new Date(s.date) >= cutoff)
-                        .slice()
-                        .reverse();
-                    if (!sessions.length) return <p className="text-center text-xs text-muted font-bold uppercase py-8">Noch keine Trainings</p>;
+                        .map((s: any) => ({ kind: "gym" as const, date: s.date, data: s }));
+                    const rideItems = cardio
+                        .filter(c => new Date(c.date + "T00:00:00") >= cutoff)
+                        .map((c: any) => ({ kind: "ride" as const, date: c.date, data: c }));
+                    const items = [...gymItems, ...rideItems].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime());
+                    if (!items.length) return <p className="text-center text-xs text-muted font-bold uppercase py-8">Noch keine Trainings</p>;
                     return (
                         <div className="space-y-3">
-                            {sessions.map((s: any) => {
+                            {items.map((item: any) => {
+                                if (item.kind === "ride") {
+                                    const c = item.data;
+                                    const kmh = c.distance_km && c.duration_min ? Math.round((c.distance_km / (c.duration_min / 60)) * 10) / 10 : null;
+                                    return (
+                                        <div key={"ride-" + c.id} className="flex items-center gap-3 rounded-2xl border border-card-border bg-card-border/20 p-4">
+                                            <span className="text-2xl">🚴</span>
+                                            <div className="min-w-0">
+                                                <p className="text-sm font-black text-foreground">{new Date(c.date + "T00:00:00").toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit" })}</p>
+                                                <p className="mt-0.5 text-[10px] font-bold uppercase tracking-widest text-muted">
+                                                    {c.distance_km ? `${c.distance_km} km` : ""}{c.distance_km && c.duration_min ? " · " : ""}{c.duration_min ? `${c.duration_min} Min` : ""}{kmh ? ` · ${kmh} km/h` : ""}
+                                                </p>
+                                                {c.route && <p className="truncate text-xs italic text-muted">{c.route}</p>}
+                                            </div>
+                                        </div>
+                                    );
+                                }
+                                const s = item.data;
                                 const byExercise: Record<string, { weight: number; reps: number }[]> = {};
                                 let volume = 0;
                                 (s.sets ?? []).forEach((set: any) => {

@@ -34,6 +34,7 @@ export default function Dashboard() {
     const [totalSessions, setTotalSessions] = useState(0);
     const [customWorkouts, setCustomWorkouts] = useState<{ id: string; name: string }[]>([]);
     const [mtmt, setMtmt] = useState<MtmtProgress>({ month: 1, week: 1 });
+    const [bikeThisWeek, setBikeThisWeek] = useState<number | null>(null);
 
     useEffect(() => {
         setMtmt(getMtmtProgress());
@@ -56,6 +57,14 @@ export default function Dashboard() {
             }
             const { data: customs } = await supabase.from('custom_workouts').select('id, name').eq('user_id', user.id).order('created_at', { ascending: false });
             if (customs) setCustomWorkouts(customs);
+            // Rad-Session diese Woche? (Woche beginnt Montag)
+            const monday = new Date();
+            monday.setDate(monday.getDate() - ((monday.getDay() + 6) % 7));
+            const { data: rides, error: ridesErr } = await supabase
+                .from('cardio_sessions').select('id')
+                .eq('user_id', user.id)
+                .gte('date', monday.toISOString().split('T')[0]);
+            if (!ridesErr) setBikeThisWeek((rides ?? []).length);
         };
         load();
     }, []);
@@ -117,6 +126,23 @@ export default function Dashboard() {
                             <div className="rounded-full bg-accent p-2 text-background transition-transform group-hover:translate-x-1">
                                 <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
                             </div>
+                        </div>
+                    </Link>
+
+                    {/* Radfahren — 1x pro Woche */}
+                    <Link href="/cardio"
+                        className={`group flex items-center justify-between rounded-2xl border p-5 transition-all hover:scale-[1.02] active:scale-[0.98] ${bikeThisWeek ? "border-accent/40 bg-accent/5" : "border-card-border bg-card-border/10"}`}>
+                        <div className="flex items-center gap-3">
+                            <span className="text-3xl">🚴</span>
+                            <div>
+                                <h3 className="text-lg font-black tracking-tighter text-foreground group-hover:text-accent transition-colors">Radfahren</h3>
+                                <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                                    {bikeThisWeek === null ? "1× pro Woche" : bikeThisWeek > 0 ? `Diese Woche erledigt ✓` : "Diese Woche noch offen"}
+                                </p>
+                            </div>
+                        </div>
+                        <div className="rounded-full bg-foreground p-2 text-background transition-transform group-hover:translate-x-1">
+                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
                         </div>
                     </Link>
 
