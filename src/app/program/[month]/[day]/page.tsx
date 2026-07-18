@@ -342,7 +342,7 @@ export default function MtmtWorkout() {
                     {day.sections.map((sec) => (
                         <section key={sec.title} className="rounded-3xl border border-card-border bg-card-border/10 p-5">
                             <div className="mb-6 border-b border-card-border pb-4">
-                                <h2 className="text-2xl font-black tracking-tighter text-foreground">{sec.title}</h2>
+                                <h2 className="inline-block rounded-lg bg-accent px-3 py-1.5 text-xl font-black uppercase tracking-tight text-background">{sec.title}</h2>
                                 {(sec.groupSets?.[weekIdx] || sec.weekNotes?.[weekIdx] || sectionInterval(sec, weekIdx)) && (
                                     <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted">
                                         {sec.groupSets?.[weekIdx] && <span className="rounded-full bg-accent/10 px-2.5 py-1 text-accent">{sec.groupSets[weekIdx]} Runden</span>}
