@@ -16,16 +16,25 @@ export interface MtmtDoneEntry {
 const PROGRESS_KEY = "fitty_mtmt_progress";
 const DONE_KEY = "fitty_mtmt_done";
 
+// Daniel startet das Programm mit Monat 2 (Kapazitätsphase)
+export const MTMT_START: MtmtProgress = { month: 2, week: 1 };
+
 export function getMtmtProgress(): MtmtProgress {
-    if (typeof window === "undefined") return { month: 1, week: 1 };
+    if (typeof window === "undefined") return MTMT_START;
     try {
         const raw = localStorage.getItem(PROGRESS_KEY);
         if (raw) {
             const p = JSON.parse(raw);
-            if (p && p.month >= 1 && p.month <= 12 && p.week >= 1 && p.week <= 4) return p;
+            if (p && p.month >= 1 && p.month <= 12 && p.week >= 1 && p.week <= 4) {
+                // Alt gespeicherter Default (Monat 1) ohne absolvierte Trainings -> auf den echten Start umziehen
+                if (p.month === 1 && p.week === 1 && getMtmtDone().length === 0 && (MTMT_START.month !== 1 || MTMT_START.week !== 1)) {
+                    return MTMT_START;
+                }
+                return p;
+            }
         }
     } catch {}
-    return { month: 1, week: 1 };
+    return MTMT_START;
 }
 
 export function setMtmtProgress(p: MtmtProgress) {

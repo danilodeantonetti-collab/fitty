@@ -35,6 +35,23 @@ function exModality(ex: MtmtExercise, weekIdx: number): Modality {
     return "weight";
 }
 
+// Tempo-Angabe aus den Cues lesen, z. B. "@ Tempo 4 - 1 - 0"
+// (Absenken - Halten - Hochdrücken, jeweils in Sekunden)
+function parseTempo(cues?: string): { tempo: string; rest: string } | null {
+    if (!cues) return null;
+    const m = cues.match(/@?\s*Tempo\s*(\d)\s*-\s*(\d)\s*-\s*(\d)/i);
+    if (!m) return null;
+    const rest = cues.replace(m[0], "").replace(/\s+/g, " ").trim();
+    return { tempo: `${m[1]}-${m[2]}-${m[3]}`, rest };
+}
+
+function tempoHint(tempo: string): string {
+    const [down, hold, up] = tempo.split("-");
+    return `${down}s absenken · ${hold}s halten · ${up === "0" ? "explosiv hoch" : `${up}s hoch`}`;
+}
+
+const TEMPO_VIDEO_URL = "https://www.youtube.com/watch?v=4acdVXoPBVM"; // Tempoarbeit - MTMT Blueprint
+
 function defaultSetCount(ex: MtmtExercise, section: MtmtSection, weekIdx: number): number {
     const own = parseInt(ex.weeks[weekIdx]?.sets ?? "");
     if (own >= 1 && own <= 10) return own;
@@ -321,15 +338,15 @@ export default function MtmtWorkout() {
             </header>
 
             <main className="mx-auto max-w-lg px-6 pt-8">
-                <div className="space-y-10">
+                <div className="space-y-6">
                     {day.sections.map((sec) => (
-                        <section key={sec.title}>
-                            <div className="mb-5 rounded-xl border border-card-border bg-card px-4 py-3">
-                                <div className="flex items-center justify-between gap-3">
-                                    <h2 className="text-sm font-black uppercase tracking-widest text-accent">{sec.title}</h2>
-                                    <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted">
-                                        {sec.groupSets?.[weekIdx] && <span className="rounded-full bg-accent/10 px-2 py-0.5 text-accent">{sec.groupSets[weekIdx]} Runden</span>}
-                                        {sec.weekNotes?.[weekIdx] && <span className="rounded-full bg-card-border/50 px-2 py-0.5">{sec.weekNotes[weekIdx]}</span>}
+                        <section key={sec.title} className="rounded-3xl border border-card-border bg-card-border/10 p-5">
+                            <div className="mb-6 border-b border-card-border pb-4">
+                                <h2 className="text-2xl font-black tracking-tighter text-foreground">{sec.title}</h2>
+                                {(sec.groupSets?.[weekIdx] || sec.weekNotes?.[weekIdx] || sectionInterval(sec, weekIdx)) && (
+                                    <div className="mt-2 flex flex-wrap items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted">
+                                        {sec.groupSets?.[weekIdx] && <span className="rounded-full bg-accent/10 px-2.5 py-1 text-accent">{sec.groupSets[weekIdx]} Runden</span>}
+                                        {sec.weekNotes?.[weekIdx] && <span className="rounded-full bg-card-border/50 px-2.5 py-1">{sec.weekNotes[weekIdx]}</span>}
                                         {(() => {
                                             const iv = sectionInterval(sec, weekIdx);
                                             if (!iv) return null;
@@ -342,7 +359,7 @@ export default function MtmtWorkout() {
                                             );
                                         })()}
                                     </div>
-                                </div>
+                                )}
                             </div>
 
                             <div className="space-y-8">
@@ -371,7 +388,24 @@ export default function MtmtWorkout() {
                                                         )}
                                                         {rm > 0 && <p className="text-xs font-bold uppercase tracking-widest text-muted">1RM ~{rm}kg</p>}
                                                     </div>
-                                                    {ex.cues && <p className="mt-1 text-xs italic text-muted">{ex.cues}</p>}
+                                                    {(() => {
+                                                        const t = parseTempo(ex.cues);
+                                                        if (!t) return ex.cues ? <p className="mt-1 text-xs italic text-muted">{ex.cues}</p> : null;
+                                                        return (
+                                                            <div className="mt-1.5 space-y-1">
+                                                                <div className="flex flex-wrap items-center gap-2">
+                                                                    <button onClick={() => setVideo({ url: TEMPO_VIDEO_URL, title: "Tempoarbeit erklärt" })}
+                                                                        aria-label="Was bedeutet die Tempo-Angabe? (Video)"
+                                                                        className="flex items-center gap-1.5 rounded-full border border-accent/40 bg-accent/10 px-2.5 py-1 text-[10px] font-black uppercase tracking-widest text-accent transition-colors hover:bg-accent hover:text-background">
+                                                                        Tempo {t.tempo}
+                                                                        <svg className="h-2.5 w-2.5" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                                                    </button>
+                                                                    <span className="text-[11px] text-muted">{tempoHint(t.tempo)}</span>
+                                                                </div>
+                                                                {t.rest && <p className="text-xs italic text-muted">{t.rest}</p>}
+                                                            </div>
+                                                        );
+                                                    })()}
                                                 </div>
                                                 <div className="flex flex-shrink-0 items-center gap-2">
                                                     {ex.videoUrl && (
