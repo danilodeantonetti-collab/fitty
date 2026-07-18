@@ -93,8 +93,7 @@ export default function SignupPage() {
                                 {goals.map((g) => (
                                     <button key={g.value} onClick={() => setGoal(g.value)}
                                         className={`rounded-2xl p-4 text-left border transition-all hover:scale-[1.02] active:scale-[0.98] ${goal === g.value ? 'border-accent bg-accent/10 neon-shadow' : 'border-card-border glass'}`}>
-                                        <span className="text-2xl">{g.emoji}</span>
-                                        <p className="text-xs font-bold text-foreground mt-2">{g.label}</p>
+                                        <p className="text-xs font-bold text-foreground">{g.label}</p>
                                     </button>
                                 ))}
                             </div>
@@ -124,7 +123,7 @@ export default function SignupPage() {
                                 <button onClick={() => setStep(2)} className="flex-1 rounded-xl border border-card-border py-3 text-sm font-bold text-muted hover:text-foreground transition-colors">Zurück</button>
                                 <button onClick={() => { if (ageRange) handleSignup(); }} disabled={loading || !ageRange}
                                     className={`flex-1 btn-primary disabled:opacity-50 disabled:scale-100`}>
-                                    {loading ? "Erstelle..." : "Los geht's! 🚀"}
+                                    {loading ? "Erstelle..." : "Los geht's!"}
                                 </button>
                             </div>
                         </div>

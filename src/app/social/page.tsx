@@ -136,7 +136,7 @@ export default function SocialPage() {
                 {/* Weekly Challenge Leaderboard */}
                 {leaderboard.length > 0 && (
                     <div className="rounded-3xl p-6 border border-card-border bg-card-border/20 space-y-4">
-                        <h3 className="text-sm font-black text-muted uppercase tracking-widest">🏆 Sessions Ranking</h3>
+                        <h3 className="text-sm font-black text-muted uppercase tracking-widest">Sessions Ranking</h3>
                         {leaderboard.map((e, i) => (
                             <div key={e.name} className="flex items-center gap-4">
                                 <span className="text-xl">{i === 0 ? '🥇' : '🥈'}</span>

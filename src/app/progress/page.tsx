@@ -122,6 +122,9 @@ export default function StatisticsDashboard() {
     const [selectedExercise, setSelectedExercise] = useState<string>("");
     const [userId, setUserId] = useState<string>("");
     const [cardio, setCardio] = useState<any[]>([]);
+    const [historyView, setHistoryView] = useState<"list" | "calendar">("list");
+    const [calMonth, setCalMonth] = useState(() => { const d = new Date(); return new Date(d.getFullYear(), d.getMonth(), 1); });
+    const [selectedDay, setSelectedDay] = useState<string | null>(null);
     const [weights, setWeights] = useState<BodyWeightEntry[]>([]);
     const [weightCloud, setWeightCloud] = useState(true);
     const [newWeight, setNewWeight] = useState("");
@@ -293,8 +296,114 @@ export default function StatisticsDashboard() {
                     </div>
                 )}
 
-                {/* Trainings-Verlauf: jede Session mit allen Sätzen */}
-                {viewMode === "history" && (() => {
+                {/* Trainings-Verlauf: Liste oder Kalender */}
+                {viewMode === "history" && (
+                    <div className="space-y-4">
+                        <div className="flex justify-center">
+                            <div className="flex overflow-hidden rounded-full border border-card-border">
+                                {(["list", "calendar"] as const).map((v) => (
+                                    <button key={v} onClick={() => setHistoryView(v)}
+                                        className={`px-5 py-1.5 text-[10px] font-black uppercase tracking-widest transition-colors ${historyView === v ? "bg-accent text-background" : "text-muted hover:text-foreground"}`}>
+                                        {v === "list" ? "Liste" : "Kalender"}
+                                    </button>
+                                ))}
+                            </div>
+                        </div>
+
+                        {historyView === "calendar" && (() => {
+                            const dayKey = (d: Date) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                            const gymByDay: Record<string, any[]> = {};
+                            statsData.forEach((s: any) => { const k = dayKey(new Date(s.date)); (gymByDay[k] ??= []).push(s); });
+                            const rideByDay: Record<string, any[]> = {};
+                            cardio.forEach((c: any) => { (rideByDay[c.date] ??= []).push(c); });
+
+                            const y = calMonth.getFullYear(), mo = calMonth.getMonth();
+                            const offset = (new Date(y, mo, 1).getDay() + 6) % 7; // Woche beginnt Montag
+                            const dim = new Date(y, mo + 1, 0).getDate();
+                            const todayKey = dayKey(new Date());
+                            const monthLabel = calMonth.toLocaleDateString("de-DE", { month: "long", year: "numeric" });
+                            const selGym = selectedDay ? gymByDay[selectedDay] ?? [] : [];
+                            const selRides = selectedDay ? rideByDay[selectedDay] ?? [] : [];
+
+                            return (
+                                <div className="space-y-4">
+                                    <div className="rounded-3xl border border-card-border bg-card-border/20 p-4">
+                                        <div className="mb-3 flex items-center justify-between">
+                                            <button onClick={() => { setCalMonth(new Date(y, mo - 1, 1)); setSelectedDay(null); }} aria-label="Voriger Monat"
+                                                className="rounded-full border border-card-border p-1.5 text-muted hover:text-foreground">
+                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" /></svg>
+                                            </button>
+                                            <p className="text-sm font-black uppercase tracking-widest text-foreground">{monthLabel}</p>
+                                            <button onClick={() => { setCalMonth(new Date(y, mo + 1, 1)); setSelectedDay(null); }} aria-label="Nächster Monat"
+                                                className="rounded-full border border-card-border p-1.5 text-muted hover:text-foreground">
+                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                                            </button>
+                                        </div>
+                                        <div className="grid grid-cols-7 gap-1 text-center">
+                                            {["Mo", "Di", "Mi", "Do", "Fr", "Sa", "So"].map((w) => (
+                                                <span key={w} className="pb-1 text-[9px] font-bold uppercase tracking-widest text-muted">{w}</span>
+                                            ))}
+                                            {Array.from({ length: offset }).map((_, i) => <span key={"e" + i} />)}
+                                            {Array.from({ length: dim }, (_, i) => i + 1).map((d) => {
+                                                const k = `${y}-${String(mo + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+                                                const hasGym = !!gymByDay[k];
+                                                const hasRide = !!rideByDay[k];
+                                                const isToday = k === todayKey;
+                                                const isSel = k === selectedDay;
+                                                return (
+                                                    <button key={k} onClick={() => setSelectedDay(isSel ? null : k)}
+                                                        className={`flex aspect-square flex-col items-center justify-center gap-0.5 rounded-lg border text-xs font-bold transition-colors ${isSel ? "border-accent bg-accent/15 text-foreground" : isToday ? "border-foreground/40 text-foreground" : "border-transparent text-muted hover:border-card-border"}`}>
+                                                        <span>{d}</span>
+                                                        <span className="flex h-1.5 items-center gap-0.5">
+                                                            {hasGym && <span className="h-1.5 w-1.5 rounded-full bg-accent" />}
+                                                            {hasRide && <span className="h-1.5 w-1.5 rounded-full border border-muted" />}
+                                                        </span>
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+                                        <div className="mt-3 flex items-center justify-center gap-4 border-t border-card-border pt-3">
+                                            <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-muted"><span className="h-1.5 w-1.5 rounded-full bg-accent" /> Training</span>
+                                            <span className="flex items-center gap-1.5 text-[9px] font-bold uppercase tracking-widest text-muted"><span className="h-1.5 w-1.5 rounded-full border border-muted" /> Rad</span>
+                                        </div>
+                                    </div>
+
+                                    {selectedDay && (selGym.length > 0 || selRides.length > 0) && (
+                                        <div className="space-y-2">
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted">{new Date(selectedDay + "T00:00:00").toLocaleDateString("de-DE", { weekday: "long", day: "2-digit", month: "long" })}</p>
+                                            {selGym.map((s: any) => {
+                                                const byEx: Record<string, string[]> = {};
+                                                (s.sets ?? []).forEach((set: any) => {
+                                                    const n = set.exercises?.name ?? set.exercise_name ?? "Übung";
+                                                    (byEx[n] ??= []).push(set.weight ? `${set.weight}×${set.reps}` : `${set.reps}`);
+                                                });
+                                                return (
+                                                    <div key={s.id} className="rounded-2xl border border-card-border bg-card-border/10 p-4 space-y-1.5">
+                                                        {Object.entries(byEx).map(([n, sets]) => (
+                                                            <div key={n} className="flex items-baseline justify-between gap-3">
+                                                                <span className="min-w-0 truncate text-xs font-bold text-foreground">{n}</span>
+                                                                <span className="flex-shrink-0 text-[11px] font-bold text-muted">{sets.join("  ·  ")}</span>
+                                                            </div>
+                                                        ))}
+                                                    </div>
+                                                );
+                                            })}
+                                            {selRides.map((c: any) => (
+                                                <div key={c.id} className="flex items-center gap-3 rounded-2xl border border-card-border bg-card-border/10 p-4">
+                                                    <svg className="h-5 w-5 flex-shrink-0 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><circle cx="6" cy="16" r="3.2" /><circle cx="18" cy="16" r="3.2" /><path strokeLinecap="round" strokeLinejoin="round" d="M6 16l4-7h5m-2.5 0L18 16M10 9h-2.5M14.5 6.5H16" /></svg>
+                                                    <p className="text-xs font-bold text-foreground">
+                                                        {c.distance_km ? `${c.distance_km} km` : ""}{c.distance_km && c.duration_min ? " · " : ""}{c.duration_min ? `${c.duration_min} Min` : ""}
+                                                        {c.route && <span className="ml-2 font-normal italic text-muted">{c.route}</span>}
+                                                    </p>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    )}
+                                </div>
+                            );
+                        })()}
+
+                        {historyView === "list" && (() => {
                     const now = new Date(); const cutoff = new Date();
                     if (filter === "7D") cutoff.setDate(now.getDate() - 7);
                     else if (filter === "30D") cutoff.setDate(now.getDate() - 30);
@@ -315,7 +424,7 @@ export default function StatisticsDashboard() {
                                     const kmh = c.distance_km && c.duration_min ? Math.round((c.distance_km / (c.duration_min / 60)) * 10) / 10 : null;
                                     return (
                                         <div key={"ride-" + c.id} className="flex items-center gap-3 rounded-2xl border border-card-border bg-card-border/20 p-4">
-                                            <span className="text-2xl">🚴</span>
+                                            <svg className="h-6 w-6 flex-shrink-0 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><circle cx="6" cy="16" r="3.2" /><circle cx="18" cy="16" r="3.2" /><path strokeLinecap="round" strokeLinejoin="round" d="M6 16l4-7h5m-2.5 0L18 16M10 9h-2.5M14.5 6.5H16" /></svg>
                                             <div className="min-w-0">
                                                 <p className="text-sm font-black text-foreground">{new Date(c.date + "T00:00:00").toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit" })}</p>
                                                 <p className="mt-0.5 text-[10px] font-bold uppercase tracking-widest text-muted">
@@ -359,7 +468,9 @@ export default function StatisticsDashboard() {
                             })}
                         </div>
                     );
-                })()}
+                        })()}
+                    </div>
+                )}
 
                 {/* Körpergewicht */}
                 {viewMode === "weight" && (() => {

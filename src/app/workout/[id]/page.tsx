@@ -127,7 +127,7 @@ export default function WorkoutSession() {
     if (showPRModal) return (
         <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 text-center">
             <div className="animate-in zoom-in duration-500 space-y-6 max-w-sm w-full">
-                <div className="text-7xl animate-bounce">🏆</div>
+                <svg className="mx-auto h-16 w-16 animate-bounce text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M8 21h8M12 17v4M7 4h10v5a5 5 0 0 1-10 0V4Z" /><path strokeLinecap="round" strokeLinejoin="round" d="M7 5H4v1a3 3 0 0 0 3 3M17 5h3v1a3 3 0 0 1-3 3" /></svg>
                 <h1 className="text-4xl font-black text-foreground">Neue Bestleistung!</h1>
                 <p className="text-muted text-sm">Du hast neue Rekorde aufgestellt:</p>
                 <div className="space-y-3">
@@ -138,7 +138,7 @@ export default function WorkoutSession() {
                         </div>
                     ))}
                 </div>
-                <button onClick={() => router.push("/dashboard")} className="btn-primary w-full text-lg mt-4">Weiter 💪</button>
+                <button onClick={() => router.push("/dashboard")} className="btn-primary w-full text-lg mt-4">Weiter</button>
             </div>
         </div>
     );

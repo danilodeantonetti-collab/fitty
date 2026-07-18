@@ -3,8 +3,19 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { getMtmtProgress, MtmtProgress } from "@/lib/mtmtProgress";
+import { getMtmtDone, getMtmtProgress, isMtmtDone, MtmtDoneEntry, MtmtProgress } from "@/lib/mtmtProgress";
 import { getMtmtMonth } from "@/data/mtmt";
+
+// Reduzierte, einfarbige Icons (Linienstil wie die übrige App)
+const FlameIcon = ({ className }: { className?: string }) => (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M12 3c.5 3-1.5 4.5-2.5 6C8.5 10.5 8 12 8 13.5A4.5 4.5 0 0 0 12 18a4.5 4.5 0 0 0 4-4.5c0-1.5-.5-2.5-1-3.5 0 1-.5 2-1.5 2.5.5-2.5-.5-6.5-1.5-9.5Z" /></svg>
+);
+const DumbbellIcon = ({ className }: { className?: string }) => (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><path strokeLinecap="round" strokeLinejoin="round" d="M4 10v4M7 8v8M17 8v8M20 10v4M7 12h10" /></svg>
+);
+const BikeIcon = ({ className }: { className?: string }) => (
+    <svg className={className} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><circle cx="6" cy="16" r="3.2" /><circle cx="18" cy="16" r="3.2" /><path strokeLinecap="round" strokeLinejoin="round" d="M6 16l4-7h5m-2.5 0L18 16M10 9h-2.5M14.5 6.5H16" /></svg>
+);
 
 function calcStreak(dates: string[]): number {
     if (dates.length === 0) return 0;
@@ -34,10 +45,12 @@ export default function Dashboard() {
     const [totalSessions, setTotalSessions] = useState(0);
     const [customWorkouts, setCustomWorkouts] = useState<{ id: string; name: string }[]>([]);
     const [mtmt, setMtmt] = useState<MtmtProgress>({ month: 1, week: 1 });
+    const [mtmtDone, setMtmtDone] = useState<MtmtDoneEntry[]>([]);
     const [bikeThisWeek, setBikeThisWeek] = useState<number | null>(null);
 
     useEffect(() => {
         setMtmt(getMtmtProgress());
+        setMtmtDone(getMtmtDone());
         const load = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;
@@ -95,14 +108,14 @@ export default function Dashboard() {
                 {/* Streak + Sessions bar */}
                 <div className="grid grid-cols-2 gap-4 mb-8 animate-in fade-in slide-in-from-bottom-4 duration-700">
                     <div className="rounded-2xl border border-card-border bg-card-border/20 p-4 flex items-center gap-3">
-                        <span className="text-3xl">{streak >= 4 ? "🔥" : streak >= 2 ? "⚡" : "💪"}</span>
+                        <FlameIcon className={`h-7 w-7 ${streak > 0 ? "text-accent" : "text-muted"}`} />
                         <div>
                             <p className="text-2xl font-black text-foreground">{streak} <span className="text-sm font-bold text-muted">Wo.</span></p>
                             <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Streak</p>
                         </div>
                     </div>
                     <div className="rounded-2xl border border-card-border bg-card-border/20 p-4 flex items-center gap-3">
-                        <span className="text-3xl">🏋️</span>
+                        <DumbbellIcon className="h-7 w-7 text-muted" />
                         <div>
                             <p className="text-2xl font-black text-foreground">{totalSessions}</p>
                             <p className="text-[10px] font-bold text-muted uppercase tracking-widest">Sessions</p>
@@ -111,40 +124,60 @@ export default function Dashboard() {
                 </div>
 
                 <div className="grid gap-6">
-                    {/* MTMT Blueprint Programm */}
-                    <Link href="/program"
-                        className="group relative overflow-hidden rounded-2xl border border-accent/40 bg-gradient-to-br from-accent/15 to-accent/5 p-6 transition-all hover:scale-[1.02] active:scale-[0.98]">
-                        <div className="relative z-10 flex flex-col gap-2">
-                            <span className="text-xs font-bold tracking-widest text-accent uppercase">12-Monats-Programm</span>
-                            <h3 className="text-2xl font-black tracking-tighter text-foreground group-hover:text-accent transition-colors">MTMT Blueprint 2.0</h3>
-                            <p className="text-sm leading-relaxed text-muted/80">
-                                Monat {mtmt.month} · Woche {mtmt.week} · {getMtmtMonth(mtmt.month)?.phase ?? ""}
-                            </p>
-                        </div>
-                        <div className="absolute right-[-10px] top-[-10px] h-24 w-24 rounded-full bg-accent/10 blur-2xl group-hover:bg-accent/20 transition-all" />
-                        <div className="mt-6 flex items-center justify-end">
-                            <div className="rounded-full bg-accent p-2 text-background transition-transform group-hover:translate-x-1">
-                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
-                            </div>
-                        </div>
-                    </Link>
+                    {/* Diese Woche: aktueller Stand MTMT + Rad */}
+                    {(() => {
+                        const month = getMtmtMonth(mtmt.month);
+                        const days = month?.days.map((d) => d.day) ?? [1, 2, 3];
+                        const nextOpen = days.find((d) => !isMtmtDone(mtmtDone, mtmt.month, mtmt.week, d));
+                        return (
+                            <div className="rounded-2xl border border-card-border bg-card-border/10 p-5">
+                                <p className="mb-4 text-[10px] font-bold uppercase tracking-widest text-muted">Diese Woche</p>
 
-                    {/* Radfahren — 1x pro Woche */}
-                    <Link href="/cardio"
-                        className={`group flex items-center justify-between rounded-2xl border p-5 transition-all hover:scale-[1.02] active:scale-[0.98] ${bikeThisWeek ? "border-accent/40 bg-accent/5" : "border-card-border bg-card-border/10"}`}>
-                        <div className="flex items-center gap-3">
-                            <span className="text-3xl">🚴</span>
-                            <div>
-                                <h3 className="text-lg font-black tracking-tighter text-foreground group-hover:text-accent transition-colors">Radfahren</h3>
-                                <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
-                                    {bikeThisWeek === null ? "1× pro Woche" : bikeThisWeek > 0 ? `Diese Woche erledigt ✓` : "Diese Woche noch offen"}
-                                </p>
+                                <Link href={nextOpen ? `/program/${mtmt.month}/${nextOpen}` : `/program/${mtmt.month}`} className="group block">
+                                    <div className="flex items-center justify-between gap-3">
+                                        <div className="min-w-0">
+                                            <h3 className="text-lg font-black tracking-tighter text-foreground group-hover:text-accent transition-colors">MTMT Blueprint</h3>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted">
+                                                Monat {mtmt.month} · Woche {mtmt.week} · {month?.phase ?? ""}
+                                            </p>
+                                        </div>
+                                        <div className="flex flex-shrink-0 items-center gap-1.5">
+                                            {days.map((d) => {
+                                                const done = isMtmtDone(mtmtDone, mtmt.month, mtmt.week, d);
+                                                return (
+                                                    <span key={d}
+                                                        className={`flex h-8 w-8 items-center justify-center rounded-full border text-[11px] font-black ${done ? "border-accent bg-accent/15 text-accent" : d === nextOpen ? "border-foreground/40 text-foreground" : "border-card-border text-muted"}`}>
+                                                        {done ? (
+                                                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                                        ) : `T${d}`}
+                                                    </span>
+                                                );
+                                            })}
+                                        </div>
+                                    </div>
+                                </Link>
+
+                                <div className="my-4 border-t border-card-border" />
+
+                                <Link href="/cardio" className="group flex items-center justify-between gap-3">
+                                    <div className="flex items-center gap-3">
+                                        <BikeIcon className="h-6 w-6 text-muted" />
+                                        <div>
+                                            <h3 className="text-lg font-black tracking-tighter text-foreground group-hover:text-accent transition-colors">Rad</h3>
+                                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted">1× pro Woche</p>
+                                        </div>
+                                    </div>
+                                    <span className={`flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full border ${bikeThisWeek ? "border-accent bg-accent/15 text-accent" : "border-card-border text-muted"}`}>
+                                        {bikeThisWeek ? (
+                                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>
+                                        ) : (
+                                            <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M9 5l7 7-7 7" /></svg>
+                                        )}
+                                    </span>
+                                </Link>
                             </div>
-                        </div>
-                        <div className="rounded-full bg-foreground p-2 text-background transition-transform group-hover:translate-x-1">
-                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M9 5l7 7-7 7" /></svg>
-                        </div>
-                    </Link>
+                        );
+                    })()}
 
                     {/* Create new workout — top */}
                     <Link href="/workout/create"

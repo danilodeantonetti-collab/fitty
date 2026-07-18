@@ -36,9 +36,8 @@ const EXERCISE_DB = [
     { name: "Trizeps Kickback", muscle: "Trizeps" },
 ];
 
-const MUSCLE_ICONS: Record<string, string> = {
-    "Brust": "🫁", "Rücken": "🔙", "Beine": "🦵", "Schultern": "🏈", "Bizeps": "💪", "Trizeps": "⚡"
-};
+// bewusst leer — reduzierter Look ohne Emojis
+const MUSCLE_ICONS: Record<string, string> = {};
 
 export default function CreateWorkout() {
     const router = useRouter();

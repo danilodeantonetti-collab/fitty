@@ -95,7 +95,7 @@ export default function CardioPage() {
                     <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
                 </Link>
                 <h1 className="text-xl font-black tracking-tighter text-foreground uppercase">Rad<span className="text-accent italic">fahren</span></h1>
-                <span className="text-2xl">🚴</span>
+                <svg className="h-6 w-6 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.8}><circle cx="6" cy="16" r="3.2" /><circle cx="18" cy="16" r="3.2" /><path strokeLinecap="round" strokeLinejoin="round" d="M6 16l4-7h5m-2.5 0L18 16M10 9h-2.5M14.5 6.5H16" /></svg>
             </header>
 
             <main className="mx-auto max-w-lg space-y-6 px-6 pt-8">
