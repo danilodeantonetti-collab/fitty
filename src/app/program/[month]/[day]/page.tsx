@@ -6,11 +6,25 @@ import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { getMtmtDay, getMtmtMonth, MtmtExercise, MtmtSection } from "@/data/mtmt";
 import { advanceMtmtProgress, getMtmtProgress, markMtmtDone, setMtmtProgress } from "@/lib/mtmtProgress";
+import { useTimer } from "@/context/TimerContext";
 import VideoModal from "@/components/VideoModal";
 
-interface SetLog { reps: string; weight: string; isWarmup?: boolean; }
+interface SetLog { reps: string; weight: string; isWarmup?: boolean; done?: boolean; }
 
 const calc1RM = (weight: number, reps: number) => reps === 1 ? weight : Math.round(weight * (1 + reps / 30));
+
+const fmtTime = (s: number) => `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+
+// Intervall-Vorgabe der Woche aus einer Sektion lesen, z. B. "10 Sek. ON / 20 Sek. OFF"
+function sectionInterval(sec: MtmtSection, weekIdx: number): { work: number; rest: number } | null {
+    for (const ex of sec.exercises) {
+        const m = (ex.weeks[weekIdx]?.reps ?? "").match(/(\d+)\s*Sek\.\s*ON\s*\/\s*(\d+)\s*Sek\.\s*OFF/i);
+        if (m) return { work: parseInt(m[1]), rest: parseInt(m[2]) };
+    }
+    return null;
+}
+
+const REST_CHOICES = [60, 90, 120, 180];
 
 function defaultSetCount(ex: MtmtExercise, section: MtmtSection, weekIdx: number): number {
     const own = parseInt(ex.weeks[weekIdx]?.sets ?? "");
@@ -36,6 +50,20 @@ export default function MtmtWorkout() {
     const [showPRModal, setShowPRModal] = useState(false);
     const [video, setVideo] = useState<{ url: string; title: string } | null>(null);
     const [sessionDate, setSessionDate] = useState(() => new Date().toISOString().split("T")[0]);
+    const timer = useTimer();
+    const [restSeconds, setRestSeconds] = useState(90);
+
+    useEffect(() => {
+        try {
+            const saved = parseInt(localStorage.getItem("fitty_rest_seconds") ?? "");
+            if (REST_CHOICES.includes(saved)) setRestSeconds(saved);
+        } catch {}
+    }, []);
+
+    const chooseRest = (s: number) => {
+        setRestSeconds(s);
+        try { localStorage.setItem("fitty_rest_seconds", String(s)); } catch {}
+    };
 
     // Woche aus dem gespeicherten Fortschritt übernehmen
     useEffect(() => {
@@ -117,6 +145,18 @@ export default function MtmtWorkout() {
     const updateSet = (name: string, idx: number, field: "weight" | "reps", value: string) =>
         setLogs(p => { const n = { ...p }; n[name] = [...n[name]]; n[name][idx] = { ...n[name][idx], [field]: value }; return n; });
     const removeSet = (name: string, idx: number) => setLogs(p => ({ ...p, [name]: p[name].filter((_, i) => i !== idx) }));
+
+    // Satz abhaken -> Pausen-Timer startet direkt hier in der Übung
+    const toggleDone = (name: string, idx: number) => {
+        setLogs(p => {
+            const n = { ...p };
+            n[name] = [...n[name]];
+            const wasDone = !!n[name][idx].done;
+            n[name][idx] = { ...n[name][idx], done: !wasDone };
+            if (!wasDone && !n[name][idx].isWarmup) timer.startRest(restSeconds);
+            return n;
+        });
+    };
 
     // Timer mit passender Intervall-Voreinstellung öffnen (z. B. "10 Sek. ON / 20 Sek. OFF")
     const openTimer = () => {
@@ -258,6 +298,17 @@ export default function MtmtWorkout() {
                                     <div className="flex items-center gap-2 text-[10px] font-bold uppercase tracking-widest text-muted">
                                         {sec.groupSets?.[weekIdx] && <span className="rounded-full bg-accent/10 px-2 py-0.5 text-accent">{sec.groupSets[weekIdx]} Runden</span>}
                                         {sec.weekNotes?.[weekIdx] && <span className="rounded-full bg-card-border/50 px-2 py-0.5">{sec.weekNotes[weekIdx]}</span>}
+                                        {(() => {
+                                            const iv = sectionInterval(sec, weekIdx);
+                                            if (!iv) return null;
+                                            return (
+                                                <button onClick={() => timer.startIntervals(iv.work, iv.rest)}
+                                                    className="flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 font-black text-background transition-transform active:scale-95">
+                                                    <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+                                                    {iv.work}/{iv.rest}
+                                                </button>
+                                            );
+                                        })()}
                                     </div>
                                 </div>
                             </div>
@@ -296,10 +347,13 @@ export default function MtmtWorkout() {
                                             </div>
                                             <div className="mt-4 space-y-3">
                                                 {(logs[ex.name] || []).map((set, idx) => (
-                                                    <div key={idx} className="flex items-center gap-3">
-                                                        <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-black border ${set.isWarmup ? "bg-muted/10 border-muted/30 text-muted" : "bg-accent/10 border-accent/20 text-accent"}`}>
-                                                            {set.isWarmup ? "W" : idx + 1}
-                                                        </div>
+                                                    <div key={idx} className={`flex items-center gap-3 transition-opacity ${set.done ? "opacity-60" : ""}`}>
+                                                        <button onClick={() => toggleDone(ex.name, idx)} aria-label={set.done ? "Satz zurücksetzen" : "Satz abhaken (startet Pause)"}
+                                                            className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full text-sm font-black border transition-all active:scale-90 ${set.done ? "bg-accent border-accent text-background" : set.isWarmup ? "bg-muted/10 border-muted/30 text-muted" : "bg-accent/10 border-accent/20 text-accent"}`}>
+                                                            {set.done ? (
+                                                                <svg className="h-5 w-5" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
+                                                            ) : set.isWarmup ? "W" : idx + 1}
+                                                        </button>
                                                         <div className="grid flex-1 grid-cols-2 gap-3">
                                                             <input type="number" placeholder="KG" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.weight} onChange={(e) => updateSet(ex.name, idx, "weight", e.target.value)} />
                                                             <input type="number" placeholder="REPS" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
@@ -318,6 +372,37 @@ export default function MtmtWorkout() {
                     ))}
                 </div>
             </main>
+
+            {/* Mini-Timer: läuft direkt im Workout, ohne Seitenwechsel */}
+            {timer.phase !== "IDLE" && (
+                <div className="fixed bottom-24 inset-x-0 z-40 flex justify-center px-6">
+                    <div className={`flex w-full max-w-sm items-center justify-between gap-3 rounded-2xl border bg-background/95 px-4 py-3 shadow-2xl backdrop-blur-md animate-in slide-in-from-bottom-4 duration-300 ${timer.phase === "REST" ? "border-blue-500/40" : "border-accent neon-shadow"}`}>
+                        <div className="flex items-center gap-3">
+                            <span className={`text-[10px] font-black uppercase tracking-widest ${timer.phase === "REST" ? "text-blue-400" : "text-accent"}`}>
+                                {timer.phase === "REST" ? "Pause" : "Arbeit"}
+                            </span>
+                            <span className="text-2xl font-black tabular-nums text-foreground">{fmtTime(timer.timeLeft)}</span>
+                            {timer.currentSet > 0 && <span className="text-xs font-bold text-muted">Runde {timer.currentSet}</span>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                            {timer.currentSet === 0 && (
+                                <div className="flex gap-1">
+                                    {REST_CHOICES.map((s) => (
+                                        <button key={s} onClick={() => chooseRest(s)}
+                                            className={`rounded-md px-1.5 py-0.5 text-[9px] font-black ${restSeconds === s ? "bg-accent text-background" : "bg-card-border/40 text-muted"}`}>
+                                            {s}
+                                        </button>
+                                    ))}
+                                </div>
+                            )}
+                            <button onClick={timer.stop} aria-label="Timer stoppen"
+                                className="rounded-full border border-card-border p-1.5 text-muted hover:text-red-400 transition-colors">
+                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            )}
 
             <div className="fixed bottom-8 inset-x-0 flex justify-center px-6">
                 <button onClick={handleFinish} disabled={saving}

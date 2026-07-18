@@ -42,6 +42,13 @@ export default function Dashboard() {
             if (!user) return;
             const { data: profile } = await supabase.from('profiles').select('nickname').eq('id', user.id).single();
             if (profile?.nickname) setNickname(profile.nickname);
+            else {
+                // Profil fehlt (z. B. Registrierung mit E-Mail-Bestätigung) -> nachlegen
+                const fallback = (user.email ?? 'Athlet').split('@')[0].split('.')[0];
+                const nick = fallback.charAt(0).toUpperCase() + fallback.slice(1);
+                const { error: insErr } = await supabase.from('profiles').insert({ id: user.id, nickname: nick });
+                if (!insErr) setNickname(nick);
+            }
             const { data: sessions } = await supabase.from('sessions').select('date').eq('user_id', user.id).order('date', { ascending: false });
             if (sessions) {
                 setTotalSessions(sessions.length);

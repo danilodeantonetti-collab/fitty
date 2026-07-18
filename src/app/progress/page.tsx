@@ -16,7 +16,7 @@ const EXERCISE_MUSCLE_MAP: Record<string, string> = {
 };
 
 type FilterType = "7D" | "30D" | "ALL";
-type ViewMode = "muscles" | "exercises" | "chart" | "weight";
+type ViewMode = "muscles" | "exercises" | "chart" | "history" | "weight";
 
 // Körpergewicht: Tageswerte (dezent) + 7-Tage-Schnitt (Akzent)
 function WeightChart({ entries }: { entries: BodyWeightEntry[] }) {
@@ -239,10 +239,10 @@ export default function StatisticsDashboard() {
 
                 {/* View toggle */}
                 <div className="flex rounded-full border border-card-border overflow-hidden">
-                    {(["muscles", "exercises", "chart", "weight"] as ViewMode[]).map((m) => (
+                    {(["muscles", "exercises", "chart", "history", "weight"] as ViewMode[]).map((m) => (
                         <button key={m} onClick={() => setViewMode(m)}
                             className={`flex-1 py-2 text-[10px] font-black tracking-widest uppercase transition-colors ${viewMode === m ? 'bg-accent text-background' : 'text-muted hover:text-foreground'}`}>
-                            {m === "muscles" ? "Muskeln" : m === "exercises" ? "\u00dcbungen" : m === "chart" ? "Verlauf" : "K\u00f6rper"}
+                            {m === "muscles" ? "Muskeln" : m === "exercises" ? "\u00dcbungen" : m === "chart" ? "Kurve" : m === "history" ? "Verlauf" : "K\u00f6rper"}
                         </button>
                     ))}
                 </div>
@@ -284,6 +284,54 @@ export default function StatisticsDashboard() {
                         {chartExercise && <LineChart data={chartData} />}
                     </div>
                 )}
+
+                {/* Trainings-Verlauf: jede Session mit allen Sätzen */}
+                {viewMode === "history" && (() => {
+                    const now = new Date(); const cutoff = new Date();
+                    if (filter === "7D") cutoff.setDate(now.getDate() - 7);
+                    else if (filter === "30D") cutoff.setDate(now.getDate() - 30);
+                    else cutoff.setFullYear(1970);
+                    const sessions = statsData
+                        .filter(s => new Date(s.date) >= cutoff)
+                        .slice()
+                        .reverse();
+                    if (!sessions.length) return <p className="text-center text-xs text-muted font-bold uppercase py-8">Noch keine Trainings</p>;
+                    return (
+                        <div className="space-y-3">
+                            {sessions.map((s: any) => {
+                                const byExercise: Record<string, { weight: number; reps: number }[]> = {};
+                                let volume = 0;
+                                (s.sets ?? []).forEach((set: any) => {
+                                    const n = set.exercises?.name ?? set.exercise_name ?? "Übung";
+                                    (byExercise[n] ??= []).push({ weight: set.weight ?? 0, reps: set.reps ?? 0 });
+                                    volume += (set.weight || 0) * (set.reps || 0);
+                                });
+                                const names = Object.keys(byExercise);
+                                return (
+                                    <details key={s.id} className="group rounded-2xl border border-card-border bg-card-border/20 open:border-accent/40">
+                                        <summary className="flex cursor-pointer list-none items-center justify-between gap-3 p-4 [&::-webkit-details-marker]:hidden">
+                                            <div>
+                                                <p className="text-sm font-black text-foreground">{new Date(s.date).toLocaleDateString("de-DE", { weekday: "short", day: "2-digit", month: "2-digit", year: "2-digit" })}</p>
+                                                <p className="mt-0.5 text-[10px] font-bold uppercase tracking-widest text-muted">{names.length} Übungen · {(s.sets ?? []).length} Sätze{volume > 0 ? ` · ${volume.toLocaleString("de-DE")} kg` : ""}</p>
+                                            </div>
+                                            <svg className="h-4 w-4 text-muted transition-transform group-open:rotate-180" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                        </summary>
+                                        <div className="space-y-2 border-t border-card-border px-4 py-3">
+                                            {names.map((n) => (
+                                                <div key={n} className="flex items-baseline justify-between gap-3">
+                                                    <span className="min-w-0 truncate text-xs font-bold text-foreground">{n}</span>
+                                                    <span className="flex-shrink-0 text-[11px] font-bold text-muted">
+                                                        {byExercise[n].map((x) => x.weight ? `${x.weight}×${x.reps}` : `${x.reps}`).join("  ·  ")}
+                                                    </span>
+                                                </div>
+                                            ))}
+                                        </div>
+                                    </details>
+                                );
+                            })}
+                        </div>
+                    );
+                })()}
 
                 {/* Körpergewicht */}
                 {viewMode === "weight" && (() => {

@@ -3,6 +3,7 @@
 import { createContext, useContext, useState, useEffect, useRef, useCallback } from "react";
 
 type Phase = "IDLE" | "WORK" | "REST";
+type Mode = "loop" | "rest"; // loop = Work/Rest im Wechsel, rest = einmaliger Pausen-Countdown
 
 interface TimerCtx {
     phase: Phase;
@@ -14,6 +15,8 @@ interface TimerCtx {
     setRestTime: (v: number) => void;
     start: () => void;
     stop: () => void;
+    startRest: (seconds: number) => void; // Einmal-Pause, z. B. nach einem abgehakten Satz
+    startIntervals: (work: number, rest: number) => void; // Intervall direkt aus dem Workout
 }
 
 const TimerContext = createContext<TimerCtx | null>(null);
@@ -47,6 +50,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     const [timeLeft, setTimeLeft] = useState(0);
     const [currentSet, setCurrentSet] = useState(0);
     const phaseRef = useRef<Phase>("IDLE");
+    const modeRef = useRef<Mode>("loop");
     const workRef = useRef(90);
     const restRef = useRef(120);
     const intervalRef = useRef<NodeJS.Timeout | null>(null);
@@ -71,6 +75,14 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
                     setPhase("REST");
                     phaseRef.current = "REST";
                     return restRef.current;
+                } else if (modeRef.current === "rest") {
+                    // Einmal-Pause: fertig -> zurück auf IDLE
+                    playBeep(440, 0.4, 0.4);
+                    setPhase("IDLE");
+                    phaseRef.current = "IDLE";
+                    setCurrentSet(0);
+                    if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
+                    return 0;
                 } else {
                     playBeep(440, 0.4, 0.4); // low end-of-rest beep
                     setPhase("WORK");
@@ -84,6 +96,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     }, []);
 
     const start = useCallback(() => {
+        modeRef.current = "loop";
         setPhase("WORK");
         phaseRef.current = "WORK";
         setTimeLeft(workRef.current);
@@ -93,6 +106,7 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
     }, [tick]);
 
     const stop = useCallback(() => {
+        modeRef.current = "loop";
         setPhase("IDLE");
         phaseRef.current = "IDLE";
         setTimeLeft(0);
@@ -100,8 +114,26 @@ export function TimerProvider({ children }: { children: React.ReactNode }) {
         if (intervalRef.current) { clearInterval(intervalRef.current); intervalRef.current = null; }
     }, []);
 
+    const startRest = useCallback((seconds: number) => {
+        modeRef.current = "rest";
+        setPhase("REST");
+        phaseRef.current = "REST";
+        setTimeLeft(seconds);
+        setCurrentSet(0);
+        if (intervalRef.current) clearInterval(intervalRef.current);
+        intervalRef.current = setInterval(tick, 1000);
+    }, [tick]);
+
+    const startIntervals = useCallback((work: number, rest: number) => {
+        workRef.current = work;
+        restRef.current = rest;
+        setWorkTime(work);
+        setRestTime(rest);
+        start();
+    }, [start]);
+
     return (
-        <TimerContext.Provider value={{ phase, timeLeft, currentSet, workTime, restTime, setWorkTime, setRestTime, start, stop }}>
+        <TimerContext.Provider value={{ phase, timeLeft, currentSet, workTime, restTime, setWorkTime, setRestTime, start, stop, startRest, startIntervals }}>
             {children}
         </TimerContext.Provider>
     );

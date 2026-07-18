@@ -31,8 +31,18 @@ export default function SignupPage() {
         const { data, error } = await supabase.auth.signUp({ email, password, options: { emailRedirectTo: `${window.location.origin}/auth/callback` } });
         if (error) { setMessage({ type: "error", text: error.message }); setLoading(false); return; }
 
-        if (data.user) {
-            await supabase.from('profiles').insert({ id: data.user.id, nickname, goal, age_range: ageRange });
+        // Ohne Session (E-Mail-Bestätigung aktiv) würde der Profil-Insert an RLS
+        // scheitern — dann erst bestätigen lassen, Profil wird beim nächsten Login geprüft.
+        if (!data.session) {
+            setMessage({ type: "success", text: "Fast geschafft! Bitte bestätige deine E-Mail (Postfach/Spam prüfen) und logge dich dann ein." });
+            setLoading(false);
+            return;
+        }
+        const { error: profileErr } = await supabase.from('profiles').insert({ id: data.user!.id, nickname, goal, age_range: ageRange });
+        if (profileErr && profileErr.code !== '23505') {
+            setMessage({ type: "error", text: "Profil konnte nicht gespeichert werden: " + profileErr.message });
+            setLoading(false);
+            return;
         }
         setMessage({ type: "success", text: "Willkommen bei Fitty!" });
         window.location.assign('/dashboard');
