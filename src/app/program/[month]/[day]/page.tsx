@@ -52,6 +52,44 @@ function tempoHint(tempo: string): string {
 
 const TEMPO_VIDEO_URL = "https://www.youtube.com/watch?v=4acdVXoPBVM"; // Tempoarbeit - MTMT Blueprint
 
+// Hilfsmittel aus den Übungsnamen ableiten. special = hat nicht jedes Studio.
+const EQUIPMENT: { re: RegExp; label: string; special?: boolean }[] = [
+    { re: /Air ?Bike/i, label: "Airbike", special: true },
+    { re: /Ski ?Ergo/i, label: "SkiErg", special: true },
+    { re: /Rower|Ruder/i, label: "Ruderergometer", special: true },
+    { re: /Versa ?Climber/i, label: "Versa Climber", special: true },
+    { re: /Battle ?Rope/i, label: "Battle Rope", special: true },
+    { re: /Trap ?Bar/i, label: "Trap Bar", special: true },
+    { re: /Safety ?Bar/i, label: "Safety Bar", special: true },
+    { re: /Wedge/i, label: "Wedge (Keil)", special: true },
+    { re: /Sled|Schlitten/i, label: "Sled", special: true },
+    { re: /Treadmil|Laufband/i, label: "Laufband", special: true },
+    { re: /Pendulum/i, label: "Pendulum Squat", special: true },
+    { re: /Foam ?Roller/i, label: "Foam Roller" },
+    { re: /\bDB\b|Kurzhantel/i, label: "Kurzhanteln" },
+    { re: /\bKB\b|Kettlebell/i, label: "Kettlebell" },
+    { re: /Langhantel|Barbell/i, label: "Langhantel" },
+    { re: /Klimmzug|Pull ?Up|Pulldown/i, label: "Klimmzugstange/Latzug" },
+    { re: /Cable|Kabel/i, label: "Kabelzug" },
+    { re: /\bBank\b|auf Bank/i, label: "Bank" },
+    { re: /\bBand\b|Miniband/i, label: "Band" },
+    { re: /\bWall|Wand/i, label: "Wand" },
+];
+
+function dayEquipment(day: { sections: MtmtSection[] }): { label: string; special: boolean }[] {
+    const found = new Map<string, boolean>();
+    day.sections.forEach((s) =>
+        s.exercises.forEach((e) => {
+            EQUIPMENT.forEach((q) => {
+                if (q.re.test(e.name)) found.set(q.label, found.get(q.label) || !!q.special);
+            });
+        })
+    );
+    return [...found.entries()]
+        .map(([label, special]) => ({ label, special }))
+        .sort((a, b) => Number(b.special) - Number(a.special));
+}
+
 function defaultSetCount(ex: MtmtExercise, section: MtmtSection, weekIdx: number): number {
     const own = parseInt(ex.weeks[weekIdx]?.sets ?? "");
     if (own >= 1 && own <= 10) return own;
@@ -338,6 +376,25 @@ export default function MtmtWorkout() {
             </header>
 
             <main className="mx-auto max-w-lg px-6 pt-8">
+                {/* Hilfsmittel des Tages — Spezial-Geräte hervorgehoben */}
+                {(() => {
+                    const eq = dayEquipment(day);
+                    if (!eq.length) return null;
+                    return (
+                        <div className="mb-6 rounded-2xl border border-card-border bg-card-border/10 p-4">
+                            <p className="mb-2 text-[10px] font-bold uppercase tracking-widest text-muted">Heute brauchst du</p>
+                            <div className="flex flex-wrap gap-1.5">
+                                {eq.map((q) => (
+                                    <span key={q.label}
+                                        className={`rounded-full border px-2.5 py-1 text-[10px] font-bold uppercase tracking-wider ${q.special ? "border-accent/50 bg-accent/10 text-accent" : "border-card-border text-muted"}`}>
+                                        {q.label}
+                                    </span>
+                                ))}
+                            </div>
+                        </div>
+                    );
+                })()}
+
                 <div className="space-y-6">
                     {day.sections.map((sec) => (
                         <section key={sec.title} className="rounded-3xl border border-card-border bg-card-border/10 p-5">
