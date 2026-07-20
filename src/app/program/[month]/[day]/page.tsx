@@ -26,14 +26,27 @@ function sectionInterval(sec: MtmtSection, weekIdx: number): { work: number; res
 
 const REST_CHOICES = [60, 90, 120, 180];
 
-// Wie wird die Übung gemessen? Gewicht×Reps, nur Reps, Zeit (Sek.) oder Atemzüge
-type Modality = "weight" | "reps" | "time" | "breath";
+// Wie wird die Übung gemessen? (aus Audit aller 318 Übungen abgeleitet)
+// weight = KG×Reps · reps = nur Reps (Körpergewicht) · time = Sekunden+Stoppuhr
+// breath = Atemzüge · cal = Kalorien (Finisher) · intervalWeight = Intervall mit
+// Gerät (nur KG) · check = Intervall ohne Gerät (nur abhaken, Timer macht die Runden)
+type Modality = "weight" | "reps" | "time" | "breath" | "cal" | "intervalWeight" | "check";
+
+const hasImplement = (name: string) =>
+    /\b(DB|KB|BB)\b|Langhantel|Barbell|Kettlebell|Kurzhantel|Trap ?Bar|Safety|Landmine|Kabel|Cable|Pulldown|Maschine|Medizinball/i.test(name);
+
+const isBodyweight = (name: string) =>
+    /Push ?Up|Klimmzug|Pull ?Up\b|Ring Rows|an Ringen|mit Festhalten|Körpergewicht|Step Overs|^Lateral Lunge$|^Skater Squat mit Festhalten$/i.test(name);
+
 function exModality(ex: MtmtExercise, weekIdx: number, sectionTitle?: string): Modality {
     const t = ex.weeks[weekIdx]?.reps ?? "";
     if (/Atemzüge/i.test(t)) return "breath";
-    if (/Sek\.|Min\./i.test(t) && !/ON\s*\//i.test(t)) return "time";
-    // Warmmachen ist Körpergewicht: kein KG-Feld
-    if (sectionTitle && /Vorbereitung/i.test(sectionTitle)) return "reps";
+    if (/Max ?Out/i.test(t)) return "time"; // so lange halten wie möglich -> Stoppuhr
+    if (/CAL/i.test(t)) return "cal";
+    if (/ON\s*\//i.test(t)) return hasImplement(ex.name) ? "intervalWeight" : "check";
+    if (/Sek\.|Min\./i.test(t)) return "time";
+    if (sectionTitle && /Vorbereitung/i.test(sectionTitle)) return "reps"; // Warmmachen = Körpergewicht
+    if (isBodyweight(ex.name)) return "reps";
     return "weight";
 }
 
@@ -482,13 +495,13 @@ export default function MtmtWorkout() {
                                                             {history[ex.name].map((h) => (
                                                                 <p key={h.date} className="text-[11px] font-bold text-muted">
                                                                     <span className="text-foreground/60">{new Date(h.date).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}:</span>{" "}
-                                                                    {h.sets.map((s) =>
-                                                                        modality === "weight" && s.weight
-                                                                            ? `${s.weight}×${s.reps}`
-                                                                            : modality === "time"
-                                                                                ? `${s.reps}s`
-                                                                                : `${s.reps}`
-                                                                    ).join(" · ")}
+                                                                    {h.sets.map((s) => {
+                                                                        if (modality === "time") return `${s.reps}s`;
+                                                                        if (modality === "cal") return `${s.reps} kcal`;
+                                                                        if (modality === "intervalWeight") return `${s.weight}kg`;
+                                                                        if (modality === "weight" && s.weight) return `${s.weight}×${s.reps}`;
+                                                                        return `${s.reps}`;
+                                                                    }).join(" · ")}
                                                                 </p>
                                                             ))}
                                                         </div>
@@ -542,6 +555,19 @@ export default function MtmtWorkout() {
                                                             <div className="flex-1">
                                                                 <input type="number" placeholder="REPS" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
                                                             </div>
+                                                        )}
+                                                        {modality === "cal" && (
+                                                            <div className="flex-1">
+                                                                <input type="number" placeholder="KCAL" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
+                                                            </div>
+                                                        )}
+                                                        {modality === "intervalWeight" && (
+                                                            <div className="flex-1">
+                                                                <input type="number" placeholder="KG" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.weight} onChange={(e) => updateSet(ex.name, idx, "weight", e.target.value)} />
+                                                            </div>
+                                                        )}
+                                                        {modality === "check" && (
+                                                            <p className="flex-1 text-center text-[10px] font-bold uppercase tracking-widest text-muted">Runde {idx + 1} — abhaken</p>
                                                         )}
                                                         {modality === "breath" && (
                                                             <div className="flex-1">
