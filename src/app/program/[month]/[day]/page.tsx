@@ -26,12 +26,14 @@ function sectionInterval(sec: MtmtSection, weekIdx: number): { work: number; res
 
 const REST_CHOICES = [60, 90, 120, 180];
 
-// Wie wird die Übung gemessen? Gewicht×Reps, Zeit (Sek.) oder Atemzüge
-type Modality = "weight" | "time" | "breath";
-function exModality(ex: MtmtExercise, weekIdx: number): Modality {
+// Wie wird die Übung gemessen? Gewicht×Reps, nur Reps, Zeit (Sek.) oder Atemzüge
+type Modality = "weight" | "reps" | "time" | "breath";
+function exModality(ex: MtmtExercise, weekIdx: number, sectionTitle?: string): Modality {
     const t = ex.weeks[weekIdx]?.reps ?? "";
     if (/Atemzüge/i.test(t)) return "breath";
     if (/Sek\.|Min\./i.test(t) && !/ON\s*\//i.test(t)) return "time";
+    // Warmmachen ist Körpergewicht: kein KG-Feld
+    if (sectionTitle && /Vorbereitung/i.test(sectionTitle)) return "reps";
     return "weight";
 }
 
@@ -108,7 +110,8 @@ export default function MtmtWorkout() {
 
     const [week, setWeek] = useState(1);
     const [logs, setLogs] = useState<Record<string, SetLog[]>>({});
-    const [lastPerformance, setLastPerformance] = useState<Record<string, { weight: string; reps: string }>>({});
+    // Pro Übung: die letzten 2 Sessions mit allen Sätzen (z. B. diese + letzte Woche)
+    const [history, setHistory] = useState<Record<string, { date: string; sets: { weight: number; reps: number }[] }[]>>({});
     const [saving, setSaving] = useState(false);
     const [newPRs, setNewPRs] = useState<{ name: string; weight: number }[]>([]);
     const [showPRModal, setShowPRModal] = useState(false);
@@ -174,7 +177,7 @@ export default function MtmtWorkout() {
         });
     }, [day, week]);
 
-    // Letzte Leistung je Übung aus den letzten Sessions laden
+    // Verlauf je Übung laden: die letzten 2 Sessions mit allen Sätzen
     useEffect(() => {
         if (!day) return;
         const names = new Set<string>();
@@ -190,26 +193,51 @@ export default function MtmtWorkout() {
                     .limit(40);
                 if (!sessions?.length) return;
                 const order = new Map(sessions.map((s, i) => [s.id, i]));
+                const dateOf = new Map(sessions.map((s) => [s.id, s.date]));
                 const { data: sets } = await supabase
-                    .from("sets").select("session_id, exercise_name, weight, reps")
+                    .from("sets").select('session_id, exercise_name, weight, reps, "order"')
                     .in("session_id", sessions.map((s) => s.id))
                     .not("exercise_name", "is", null);
                 if (!sets) return;
-                const best: Record<string, { idx: number; weight: string; reps: string }> = {};
+                // je Übung nach Session gruppieren
+                const grouped: Record<string, Map<string, { weight: number; reps: number; order: number }[]>> = {};
                 sets.forEach((s: any) => {
                     if (!names.has(s.exercise_name)) return;
-                    const idx = order.get(s.session_id) ?? 999;
-                    if (!best[s.exercise_name] || idx < best[s.exercise_name].idx) {
-                        best[s.exercise_name] = { idx, weight: String(s.weight), reps: String(s.reps) };
-                    }
+                    const bySession = (grouped[s.exercise_name] ??= new Map());
+                    if (!bySession.has(s.session_id)) bySession.set(s.session_id, []);
+                    bySession.get(s.session_id)!.push({ weight: Number(s.weight), reps: Number(s.reps), order: Number(s.order ?? 0) });
                 });
-                const perf: Record<string, { weight: string; reps: string }> = {};
-                Object.entries(best).forEach(([n, b]) => { perf[n] = { weight: b.weight, reps: b.reps }; });
-                setLastPerformance(perf);
+                const hist: typeof history = {};
+                Object.entries(grouped).forEach(([name, bySession]) => {
+                    hist[name] = [...bySession.entries()]
+                        .sort((a, b) => (order.get(a[0]) ?? 999) - (order.get(b[0]) ?? 999))
+                        .slice(0, 2)
+                        .map(([sid, list]) => ({
+                            date: String(dateOf.get(sid) ?? ""),
+                            sets: list.sort((a, b) => a.order - b.order).map(({ weight, reps }) => ({ weight, reps })),
+                        }));
+                });
+                setHistory(hist);
             } catch (e) { console.error(e); }
         };
         load();
     }, [day]);
+
+    // Werte der letzten Session in die Eingabefelder übernehmen
+    const fillFromLast = () => {
+        setLogs((prev) => {
+            const next: Record<string, SetLog[]> = { ...prev };
+            Object.entries(history).forEach(([name, hs]) => {
+                const last = hs[0];
+                if (!last?.sets.length) return;
+                next[name] = last.sets.map((s) => ({
+                    weight: s.weight ? String(s.weight) : "",
+                    reps: s.reps ? String(s.reps) : "",
+                }));
+            });
+            return next;
+        });
+    };
 
     if (!month || !day) {
         return (
@@ -373,6 +401,16 @@ export default function MtmtWorkout() {
                             className="w-28 bg-transparent text-xs font-bold text-foreground border-none outline-none" />
                     </div>
                 </div>
+                {Object.keys(history).length > 0 && (
+                    <button onClick={fillFromLast}
+                        className="flex items-center justify-center gap-1.5 rounded-full border border-accent/50 bg-accent/10 px-3 py-1.5 text-[10px] font-black uppercase tracking-widest text-accent transition-colors hover:bg-accent/20">
+                        <svg className="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" strokeLinejoin="round">
+                            <polyline points="1 4 1 10 7 10" />
+                            <path d="M3.51 15a9 9 0 1 0 .49-4.95" />
+                        </svg>
+                        Letzte Werte übernehmen
+                    </button>
+                )}
             </header>
 
             <main className="mx-auto max-w-lg px-6 pt-8">
@@ -423,7 +461,7 @@ export default function MtmtWorkout() {
                                 {sec.exercises.map((ex) => {
                                     const target = ex.weeks[weekIdx];
                                     const rm = get1RM(ex.name);
-                                    const modality = exModality(ex, weekIdx);
+                                    const modality = exModality(ex, weekIdx, sec.title);
                                     return (
                                         <div key={ex.id + ex.name}>
                                             <div className="flex items-start justify-between border-b border-accent/20 pb-2 gap-2">
@@ -436,15 +474,25 @@ export default function MtmtWorkout() {
                                                         <p className="text-xs font-bold uppercase tracking-widest text-accent">
                                                             {target.sets ? `${target.sets} × ` : ""}{target.reps ?? "—"}
                                                         </p>
-                                                        {lastPerformance[ex.name] && (
-                                                            <p className="text-xs font-bold uppercase tracking-widest text-muted">
-                                                                Zuletzt: {modality === "weight"
-                                                                    ? `${lastPerformance[ex.name].weight}kg × ${lastPerformance[ex.name].reps}`
-                                                                    : `${lastPerformance[ex.name].reps}${modality === "time" ? " Sek." : " Atemzüge"}`}
-                                                            </p>
-                                                        )}
                                                         {rm > 0 && <p className="text-xs font-bold uppercase tracking-widest text-muted">1RM ~{rm}kg</p>}
                                                     </div>
+                                                    {/* Was zuletzt gemacht wurde: die letzten 2 Sessions komplett */}
+                                                    {history[ex.name]?.length ? (
+                                                        <div className="mt-1 space-y-0.5">
+                                                            {history[ex.name].map((h) => (
+                                                                <p key={h.date} className="text-[11px] font-bold text-muted">
+                                                                    <span className="text-foreground/60">{new Date(h.date).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}:</span>{" "}
+                                                                    {h.sets.map((s) =>
+                                                                        modality === "weight" && s.weight
+                                                                            ? `${s.weight}×${s.reps}`
+                                                                            : modality === "time"
+                                                                                ? `${s.reps}s`
+                                                                                : `${s.reps}`
+                                                                    ).join(" · ")}
+                                                                </p>
+                                                            ))}
+                                                        </div>
+                                                    ) : null}
                                                     {(() => {
                                                         const t = parseTempo(ex.cues);
                                                         if (!t) return ex.cues ? <p className="mt-1 text-xs italic text-muted">{ex.cues}</p> : null;
@@ -487,6 +535,11 @@ export default function MtmtWorkout() {
                                                         {modality === "weight" && (
                                                             <div className="grid flex-1 grid-cols-2 gap-3">
                                                                 <input type="number" placeholder="KG" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.weight} onChange={(e) => updateSet(ex.name, idx, "weight", e.target.value)} />
+                                                                <input type="number" placeholder="REPS" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
+                                                            </div>
+                                                        )}
+                                                        {modality === "reps" && (
+                                                            <div className="flex-1">
                                                                 <input type="number" placeholder="REPS" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
                                                             </div>
                                                         )}
