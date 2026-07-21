@@ -4,7 +4,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { getMtmtMonth } from "@/data/mtmt";
-import { getMtmtDone, getMtmtProgress, isMtmtDone, setMtmtProgress, MtmtDoneEntry } from "@/lib/mtmtProgress";
+import { getMtmtDone, getMtmtProgress, isMtmtDone, setMtmtProgress, syncMtmtState, MtmtDoneEntry } from "@/lib/mtmtProgress";
 
 export default function ProgramMonth() {
     const params = useParams();
@@ -17,6 +17,10 @@ export default function ProgramMonth() {
         const p = getMtmtProgress();
         if (p.month === monthNum) setWeek(p.week);
         setDone(getMtmtDone());
+        syncMtmtState().then((s) => {
+            if (s.progress.month === monthNum) setWeek(s.progress.week);
+            setDone(s.done);
+        });
     }, [monthNum]);
 
     if (!month) {

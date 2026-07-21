@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
-import { getMtmtDone, getMtmtProgress, isMtmtDone, MtmtDoneEntry, MtmtProgress } from "@/lib/mtmtProgress";
+import { getMtmtDone, getMtmtProgress, isMtmtDone, MtmtDoneEntry, MtmtProgress, syncMtmtState } from "@/lib/mtmtProgress";
 import { getMtmtMonth } from "@/data/mtmt";
 
 // Reduzierte, einfarbige Icons (Linienstil wie die übrige App)
@@ -51,6 +51,8 @@ export default function Dashboard() {
     useEffect(() => {
         setMtmt(getMtmtProgress());
         setMtmtDone(getMtmtDone());
+        // Häkchen + Monat/Woche mit der Cloud abgleichen (Handy <-> PC)
+        syncMtmtState().then(({ progress, done }) => { setMtmt(progress); setMtmtDone(done); });
         const load = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;

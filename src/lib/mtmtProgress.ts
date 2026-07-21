@@ -1,5 +1,8 @@
-// Merkt sich lokal, wo der Nutzer im MTMT Blueprint steht und welche
-// Trainings bereits absolviert wurden (gleiche Konvention wie fitty_theme).
+// MTMT-Fortschritt: localStorage als schneller Cache, Supabase (mtmt_state)
+// als geräteübergreifende Wahrheit. Häkchen von Handy und PC werden vereinigt;
+// bei Monat/Woche gewinnt die zuletzt geänderte Seite.
+
+import { supabase } from "@/lib/supabaseClient";
 
 export interface MtmtProgress {
     month: number; // 1-12
@@ -15,9 +18,18 @@ export interface MtmtDoneEntry {
 
 const PROGRESS_KEY = "fitty_mtmt_progress";
 const DONE_KEY = "fitty_mtmt_done";
+const UPDATED_KEY = "fitty_mtmt_updated";
 
 // Daniel startet das Programm mit Monat 2 (Kapazitätsphase)
 export const MTMT_START: MtmtProgress = { month: 2, week: 1 };
+
+function touchLocal() {
+    try { localStorage.setItem(UPDATED_KEY, new Date().toISOString()); } catch {}
+}
+
+function localUpdatedAt(): number {
+    try { return Date.parse(localStorage.getItem(UPDATED_KEY) ?? "") || 0; } catch { return 0; }
+}
 
 export function getMtmtProgress(): MtmtProgress {
     if (typeof window === "undefined") return MTMT_START;
@@ -40,6 +52,8 @@ export function getMtmtProgress(): MtmtProgress {
 export function setMtmtProgress(p: MtmtProgress) {
     if (typeof window === "undefined") return;
     localStorage.setItem(PROGRESS_KEY, JSON.stringify(p));
+    touchLocal();
+    void pushMtmtState();
 }
 
 export function getMtmtDone(): MtmtDoneEntry[] {
@@ -63,6 +77,8 @@ export function markMtmtDone(entry: MtmtDoneEntry) {
     if (!isMtmtDone(list, entry.month, entry.week, entry.day)) {
         list.push(entry);
         localStorage.setItem(DONE_KEY, JSON.stringify(list));
+        touchLocal();
+        void pushMtmtState();
     }
 }
 
@@ -81,4 +97,57 @@ export function advanceMtmtProgress(daysInMonth: number): MtmtProgress {
     else next = p; // Programm komplett
     setMtmtProgress(next);
     return next;
+}
+
+// Lokalen Stand in die Cloud schreiben (best effort, blockiert nie die UI)
+async function pushMtmtState() {
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return;
+        const p = getMtmtProgress();
+        await supabase.from("mtmt_state").upsert(
+            [{ user_id: user.id, month: p.month, week: p.week, done: getMtmtDone(), updated_at: new Date().toISOString() }],
+            { onConflict: "user_id" }
+        );
+    } catch {}
+}
+
+// Beim Öffnen aufrufen: Cloud- und Gerätestand zusammenführen.
+export async function syncMtmtState(): Promise<{ progress: MtmtProgress; done: MtmtDoneEntry[] }> {
+    const localP = getMtmtProgress();
+    const localDone = getMtmtDone();
+    if (typeof window === "undefined") return { progress: localP, done: localDone };
+    try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) return { progress: localP, done: localDone };
+        const { data, error } = await supabase
+            .from("mtmt_state")
+            .select("month, week, done, updated_at")
+            .eq("user_id", user.id)
+            .maybeSingle();
+        if (error) return { progress: localP, done: localDone };
+
+        const serverDone: MtmtDoneEntry[] = Array.isArray(data?.done) ? (data!.done as MtmtDoneEntry[]) : [];
+        const merged = [...localDone];
+        serverDone.forEach((e) => { if (!isMtmtDone(merged, e.month, e.week, e.day)) merged.push(e); });
+
+        let progress = localP;
+        const serverTs = data ? Date.parse(String(data.updated_at)) || 0 : 0;
+        if (data && serverTs > localUpdatedAt()) progress = { month: data.month, week: data.week };
+
+        localStorage.setItem(DONE_KEY, JSON.stringify(merged));
+        localStorage.setItem(PROGRESS_KEY, JSON.stringify(progress));
+
+        const serverNeedsUpdate =
+            !data || merged.length !== serverDone.length || progress.month !== data.month || progress.week !== data.week;
+        if (serverNeedsUpdate) {
+            await supabase.from("mtmt_state").upsert(
+                [{ user_id: user.id, month: progress.month, week: progress.week, done: merged, updated_at: new Date().toISOString() }],
+                { onConflict: "user_id" }
+            );
+        }
+        return { progress, done: merged };
+    } catch {
+        return { progress: localP, done: localDone };
+    }
 }

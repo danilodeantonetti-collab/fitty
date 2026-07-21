@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { getMtmtDay, getMtmtMonth, MtmtExercise, MtmtSection } from "@/data/mtmt";
-import { advanceMtmtProgress, getMtmtProgress, markMtmtDone, setMtmtProgress } from "@/lib/mtmtProgress";
+import { advanceMtmtProgress, getMtmtProgress, markMtmtDone, setMtmtProgress, syncMtmtState } from "@/lib/mtmtProgress";
 import { useTimer } from "@/context/TimerContext";
 import VideoModal from "@/components/VideoModal";
 
@@ -168,10 +168,11 @@ export default function MtmtWorkout() {
         try { localStorage.setItem("fitty_rest_seconds", String(s)); } catch {}
     };
 
-    // Woche aus dem gespeicherten Fortschritt übernehmen
+    // Woche aus dem gespeicherten Fortschritt übernehmen (+ Cloud-Abgleich)
     useEffect(() => {
         const p = getMtmtProgress();
         if (p.month === monthNum) setWeek(p.week);
+        syncMtmtState().then((s) => { if (s.progress.month === monthNum) setWeek(s.progress.week); });
     }, [monthNum]);
 
     // Leere Satz-Zeilen passend zur gewählten Woche anlegen (Eingaben bleiben beim Wochenwechsel erhalten)

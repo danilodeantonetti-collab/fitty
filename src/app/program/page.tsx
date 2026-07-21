@@ -3,7 +3,7 @@
 import Link from "next/link";
 import { useEffect, useState } from "react";
 import { MTMT_MONTHS, MTMT_INFO_VIDEOS } from "@/data/mtmt";
-import { getMtmtDone, getMtmtProgress, MtmtDoneEntry, MtmtProgress } from "@/lib/mtmtProgress";
+import { getMtmtDone, getMtmtProgress, MtmtDoneEntry, MtmtProgress, syncMtmtState } from "@/lib/mtmtProgress";
 import VideoModal from "@/components/VideoModal";
 
 const PHASE_COLORS: Record<string, string> = {
@@ -27,6 +27,7 @@ export default function ProgramOverview() {
     useEffect(() => {
         setProgress(getMtmtProgress());
         setDone(getMtmtDone());
+        syncMtmtState().then((s) => { setProgress(s.progress); setDone(s.done); });
     }, []);
 
     const doneCount = (month: number) => done.filter((e) => e.month === month).length;
