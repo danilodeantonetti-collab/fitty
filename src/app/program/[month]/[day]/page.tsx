@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { getMtmtDay, getMtmtMonth, MtmtExercise, MtmtSection } from "@/data/mtmt";
 import { advanceMtmtProgress, getMtmtProgress, markMtmtDone, setMtmtProgress, syncMtmtState } from "@/lib/mtmtProgress";
@@ -168,11 +168,48 @@ export default function MtmtWorkout() {
         try { localStorage.setItem("fitty_rest_seconds", String(s)); } catch {}
     };
 
-    // Woche aus dem gespeicherten Fortschritt übernehmen (+ Cloud-Abgleich)
+    // Zwischenspeicherung: jede Eingabe landet sofort als Entwurf im localStorage.
+    // Zurückgehen oder App schließen verliert nichts mehr; "Session beenden" löscht den Entwurf.
+    const draftKey = `fitty_mtmt_draft_${monthNum}_${dayNum}`;
+    const draftRestored = useRef(false);
+
+    useEffect(() => {
+        try {
+            const raw = localStorage.getItem(draftKey);
+            if (raw) {
+                const d = JSON.parse(raw);
+                if (Date.now() - (d.savedAt ?? 0) < 20 * 3600_000 && d.logs) {
+                    setLogs((prev) => (Object.keys(prev).length ? prev : d.logs));
+                    if (d.week >= 1 && d.week <= 4) { setWeek(d.week); draftRestored.current = true; }
+                } else {
+                    localStorage.removeItem(draftKey);
+                }
+            }
+        } catch {}
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [draftKey]);
+
+    // Entwurf automatisch speichern (leicht verzögert, um nicht bei jedem Tastendruck zu schreiben)
+    useEffect(() => {
+        if (!day) return;
+        const hasContent = Object.values(logs).some((sets) => sets.some((s) => s.weight || s.reps || s.done));
+        const t = setTimeout(() => {
+            try {
+                if (hasContent) localStorage.setItem(draftKey, JSON.stringify({ week, logs, savedAt: Date.now() }));
+                else localStorage.removeItem(draftKey);
+            } catch {}
+        }, 300);
+        return () => clearTimeout(t);
+    }, [logs, week, day, draftKey]);
+
+    // Woche aus dem gespeicherten Fortschritt übernehmen (+ Cloud-Abgleich);
+    // ein wiederhergestellter Entwurf hat Vorrang
     useEffect(() => {
         const p = getMtmtProgress();
-        if (p.month === monthNum) setWeek(p.week);
-        syncMtmtState().then((s) => { if (s.progress.month === monthNum) setWeek(s.progress.week); });
+        if (!draftRestored.current && p.month === monthNum) setWeek(p.week);
+        syncMtmtState().then((s) => {
+            if (!draftRestored.current && s.progress.month === monthNum) setWeek(s.progress.week);
+        });
     }, [monthNum]);
 
     // Leere Satz-Zeilen passend zur gewählten Woche anlegen (Eingaben bleiben beim Wochenwechsel erhalten)
@@ -355,6 +392,7 @@ export default function MtmtWorkout() {
                 if (error) throw error;
             }
 
+            try { localStorage.removeItem(draftKey); } catch {} // Entwurf ist jetzt richtig gespeichert
             markMtmtDone({ month: monthNum, week, day: dayNum, date: sessionDate });
             advanceMtmtProgress(month.days.length);
 
