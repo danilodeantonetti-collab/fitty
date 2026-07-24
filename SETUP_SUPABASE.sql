@@ -309,3 +309,9 @@ drop policy if exists "exercise_notes_delete_own" on public.exercise_notes;
 create policy "exercise_notes_delete_own" on public.exercise_notes
     for delete using (auth.uid() = user_id);
 
+
+-- Sessions dÃ¼rfen vom Besitzer geÃ¤ndert werden (fÃ¼r das Bearbeiten gespeicherter Trainings)
+drop policy if exists "sessions_update_own" on public.sessions;
+create policy "sessions_update_own" on public.sessions
+    for update using (auth.uid() = user_id) with check (auth.uid() = user_id);
+

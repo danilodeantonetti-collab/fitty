@@ -14,6 +14,7 @@ export interface MtmtDoneEntry {
     week: number;
     day: number;
     date: string; // ISO yyyy-mm-dd
+    sessionId?: string; // gespeicherte Session -> ermöglicht späteres Bearbeiten
 }
 
 const PROGRESS_KEY = "fitty_mtmt_progress";

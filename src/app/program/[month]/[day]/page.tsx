@@ -5,7 +5,7 @@ import { useParams, useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { getMtmtDay, getMtmtMonth, MtmtExercise, MtmtSection } from "@/data/mtmt";
-import { advanceMtmtProgress, getMtmtProgress, markMtmtDone, setMtmtProgress, syncMtmtState } from "@/lib/mtmtProgress";
+import { advanceMtmtProgress, getMtmtDone, getMtmtProgress, markMtmtDone, setMtmtProgress, syncMtmtState } from "@/lib/mtmtProgress";
 import { useTimer } from "@/context/TimerContext";
 import { flushPendingSessions, queuePendingSession } from "@/lib/pendingSessions";
 import VideoModal from "@/components/VideoModal";
@@ -173,9 +173,85 @@ export default function MtmtWorkout() {
     const [newPRs, setNewPRs] = useState<{ name: string; weight: number }[]>([]);
     const [showPRModal, setShowPRModal] = useState(false);
     const [celebrate, setCelebrate] = useState<{ kind: "week" | "month"; nextMonth: number; nextWeek: number } | null>(null);
+    // Bearbeiten-Modus: dieser Tag ist schon gespeichert -> wir ändern die bestehende Session
+    const [editSessionId, setEditSessionId] = useState<string | null>(null);
 
     // Offline gespeicherte Sessions nachladen, sobald die Seite (mit Netz) öffnet
     useEffect(() => { void flushPendingSessions(); }, []);
+
+    // Ist der Tag (für die gewählte Woche) schon absolviert? Dann gespeicherte Werte laden.
+    useEffect(() => {
+        if (!day) return;
+        let cancelled = false;
+        const loadSaved = async () => {
+            const entry = getMtmtDone().find((e) => e.month === monthNum && e.week === week && e.day === dayNum);
+            if (!entry) { setEditSessionId(null); return; }
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) return;
+                let sid = entry.sessionId;
+                if (!sid) {
+                    // ältere Einträge ohne Session-Verweis: über das Datum finden
+                    const next = new Date(entry.date + "T00:00:00Z");
+                    next.setUTCDate(next.getUTCDate() + 1);
+                    const { data: cand } = await supabase
+                        .from("sessions").select("id")
+                        .eq("user_id", user.id)
+                        .gte("date", entry.date)
+                        .lt("date", next.toISOString().slice(0, 10))
+                        .limit(1);
+                    sid = cand?.[0]?.id;
+                }
+                if (!sid || cancelled) { if (!cancelled) setEditSessionId(null); return; }
+                const { data: sets } = await supabase
+                    .from("sets").select('exercise_name, weight, reps, "order"')
+                    .eq("session_id", sid)
+                    .order("order");
+                if (cancelled) return;
+                setEditSessionId(sid);
+                setSessionDate(entry.date);
+                // Seiten-Übungen wieder zu Links/Rechts-Paaren zusammensetzen
+                const sideNames = new Set<string>();
+                day.sections.forEach((sec) =>
+                    sec.exercises.forEach((e) => {
+                        const m = exModality(e, week - 1, sec.title);
+                        if (isSideTarget(e, week - 1) && (m === "time" || m === "reps" || m === "breath")) sideNames.add(e.name);
+                    })
+                );
+                const byName: Record<string, { weight: number; reps: number }[]> = {};
+                (sets ?? []).forEach((s: any) => {
+                    if (s.exercise_name) (byName[s.exercise_name] ??= []).push({ weight: Number(s.weight), reps: Number(s.reps) });
+                });
+                setLogs((prev) => {
+                    // laufende Eingaben/Entwürfe haben Vorrang vor dem Nachladen
+                    if (Object.values(prev).some((rows) => rows.some((r) => r.weight || r.reps || r.reps2))) return prev;
+                    const nextLogs: Record<string, SetLog[]> = { ...prev };
+                    Object.entries(byName).forEach(([name, list]) => {
+                        if (sideNames.has(name)) {
+                            const rows: SetLog[] = [];
+                            for (let i = 0; i < list.length; i += 2) {
+                                rows.push({
+                                    weight: "",
+                                    reps: list[i]?.reps ? String(list[i].reps) : "",
+                                    reps2: list[i + 1]?.reps ? String(list[i + 1].reps) : "",
+                                });
+                            }
+                            nextLogs[name] = rows;
+                        } else {
+                            nextLogs[name] = list.map((s) => ({
+                                weight: s.weight ? String(s.weight) : "",
+                                reps: s.reps ? String(s.reps) : "",
+                            }));
+                        }
+                    });
+                    return nextLogs;
+                });
+            } catch {}
+        };
+        loadSaved();
+        return () => { cancelled = true; };
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [day, monthNum, dayNum, week]);
     const [video, setVideo] = useState<{ url: string; title: string } | null>(null);
     const [sessionDate, setSessionDate] = useState(() => new Date().toISOString().split("T")[0]);
     const timer = useTimer();
@@ -449,10 +525,10 @@ export default function MtmtWorkout() {
     };
 
     // Entwurf löschen, Tag abhaken, Fortschritt weiterschalten; meldet Wochen-/Monatsabschluss
-    const finishLocally = (): "week" | "month" | null => {
+    const finishLocally = (sessionId?: string): "week" | "month" | null => {
         try { localStorage.removeItem(draftKey); } catch {}
         const before = getMtmtProgress();
-        markMtmtDone({ month: monthNum, week, day: dayNum, date: sessionDate });
+        markMtmtDone({ month: monthNum, week, day: dayNum, date: sessionDate, sessionId });
         const after = advanceMtmtProgress(month.days.length);
         if (after.month !== before.month) {
             setCelebrate({ kind: "month", nextMonth: after.month, nextWeek: after.week });
@@ -468,6 +544,32 @@ export default function MtmtWorkout() {
     const handleFinish = async () => {
         setSaving(true);
         const rows = buildRows();
+
+        // Bearbeiten-Modus: bestehende Session überschreiben statt neue anlegen
+        if (editSessionId) {
+            try {
+                const { data: { user } } = await supabase.auth.getUser();
+                if (!user) { alert("Nicht eingeloggt!"); setSaving(false); return; }
+                const { error: upErr } = await supabase
+                    .from("sessions").update({ date: new Date(sessionDate).toISOString() })
+                    .eq("id", editSessionId).eq("user_id", user.id);
+                if (upErr) throw upErr;
+                const { error: delErr } = await supabase.from("sets").delete().eq("session_id", editSessionId);
+                if (delErr) throw delErr;
+                if (rows.length > 0) {
+                    const { error } = await supabase.from("sets").insert(rows.map((r) => ({ ...r, session_id: editSessionId })));
+                    if (error) throw error;
+                }
+                try { localStorage.removeItem(draftKey); } catch {}
+                setSaving(false);
+                router.push(`/program/${monthNum}`);
+            } catch {
+                setSaving(false);
+                alert("Änderung konnte nicht gespeichert werden (kein Netz?). Deine Eingaben bleiben zwischengespeichert — versuch es gleich nochmal.");
+            }
+            return;
+        }
+
         try {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) { alert("Nicht eingeloggt!"); setSaving(false); return; }
@@ -504,7 +606,7 @@ export default function MtmtWorkout() {
                 if (error) throw error;
             }
 
-            const celeb = finishLocally();
+            const celeb = finishLocally(session.id);
             setSaving(false);
             if (prs.length > 0) { setNewPRs(prs); setShowPRModal(true); }
             else if (!celeb) router.push(`/program/${monthNum}`);
@@ -611,6 +713,18 @@ export default function MtmtWorkout() {
             </header>
 
             <main className="mx-auto max-w-lg px-6 pt-8">
+                {/* Bearbeiten-Hinweis für bereits gespeicherte Trainings */}
+                {editSessionId && (
+                    <div className="mb-6 flex items-start gap-3 rounded-2xl border border-accent/50 bg-accent/10 p-4">
+                        <svg className="mt-0.5 h-4 w-4 flex-shrink-0 text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.9 4.4a2 2 0 0 1 2.8 2.8L7 20l-4 1 1-4Z" /></svg>
+                        <p className="text-xs leading-relaxed text-foreground">
+                            <span className="font-black uppercase tracking-widest text-accent">Bearbeiten</span> — dieses Training ist schon gespeichert
+                            ({new Date(sessionDate + "T00:00:00").toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}).
+                            Speichern überschreibt die alten Werte.
+                        </p>
+                    </div>
+                )}
+
                 {/* Hilfsmittel des Tages — Spezial-Geräte hervorgehoben */}
                 {(() => {
                     const eq = dayEquipment(day);
@@ -885,7 +999,7 @@ export default function MtmtWorkout() {
             <div className="fixed bottom-8 inset-x-0 flex justify-center px-6">
                 <button onClick={handleFinish} disabled={saving}
                     className="btn-primary w-full max-w-sm flex items-center justify-center gap-3 text-lg disabled:opacity-50">
-                    {saving ? "Speichere..." : "Session beenden"}
+                    {saving ? "Speichere..." : editSessionId ? "Änderungen speichern" : "Session beenden"}
                     <svg className="h-6 w-6" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M5 13l4 4L19 7" /></svg>
                 </button>
             </div>
