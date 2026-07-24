@@ -15,6 +15,21 @@ const EXERCISE_MUSCLE_MAP: Record<string, string> = {
     "Trizepsdr\u00fccken (Seil)": "Trizeps"
 };
 
+// MTMT- und eigene \u00dcbungen per Stichwort zuordnen (Reihenfolge z\u00e4hlt: Beine vor Trizeps
+// wegen "Hip Extensions", R\u00fccken vor Brust wegen "Chest supported Row")
+function muscleOf(name: string): string {
+    if (EXERCISE_MUSCLE_MAP[name]) return EXERCISE_MUSCLE_MAP[name];
+    const s = name.toLowerCase();
+    if (/squat|lunge|step ?up|step ?over|\brdl\b|kniebeuge|kreuzheben|hip (thrust|extension|airplane|shift)|bridge|swing|march|shrimp|wandern|bein/.test(s)) return "Beine";
+    if (/row|pulldown|klimmzug|pull ?up|pull-?over|face pull|\u00fcberz\u00fcge|shrug|halos|r\u00fccken/.test(s)) return "R\u00fccken";
+    if (/bench|push ?up|fly|butterfly|floor press|brust/.test(s)) return "Brust";
+    if (/\bohp\b|overhead|seitheben|landmine press|z-press|schulter|scapula|wall slides|wallstrides/.test(s)) return "Schultern";
+    if (/curl|bizeps/.test(s)) return "Bizeps";
+    if (/trizeps|pushdown|skull|kickback|extension|dip/.test(s)) return "Trizeps";
+    if (/plank|dead ?bug|bird|crawl|breathing|atmen|hollow|mountain climber|side ?plank|core|transitions|cross over|cross connect|knee slides/.test(s)) return "Core";
+    return "Andere";
+}
+
 type FilterType = "7D" | "30D" | "ALL";
 type ViewMode = "muscles" | "exercises" | "chart" | "history" | "weight";
 
@@ -193,7 +208,7 @@ export default function StatisticsDashboard() {
                 const v = (set.weight || 0) * (set.reps || 0); totalVolume += v;
                 const n = set.exercises?.name ?? set.exercise_name;
                 if (n) {
-                    muscleVol[EXERCISE_MUSCLE_MAP[n] || "Andere"] = (muscleVol[EXERCISE_MUSCLE_MAP[n] || "Andere"] || 0) + v;
+                    muscleVol[muscleOf(n)] = (muscleVol[muscleOf(n)] || 0) + v;
                     exVol[n] = (exVol[n] || 0) + v;
                     if (!exMaxBySession[n]) exMaxBySession[n] = [];
                     const last = exMaxBySession[n][exMaxBySession[n].length - 1];

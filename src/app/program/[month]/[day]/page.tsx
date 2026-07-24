@@ -7,6 +7,7 @@ import { supabase } from "@/lib/supabaseClient";
 import { getMtmtDay, getMtmtMonth, MtmtExercise, MtmtSection } from "@/data/mtmt";
 import { advanceMtmtProgress, getMtmtProgress, markMtmtDone, setMtmtProgress, syncMtmtState } from "@/lib/mtmtProgress";
 import { useTimer } from "@/context/TimerContext";
+import { flushPendingSessions, queuePendingSession } from "@/lib/pendingSessions";
 import VideoModal from "@/components/VideoModal";
 
 interface SetLog { reps: string; weight: string; reps2?: string; isWarmup?: boolean; done?: boolean; } // reps2 = rechte Seite bei "/ Seite"-Übungen
@@ -70,6 +71,24 @@ function tempoHint(tempo: string): string {
 
 const TEMPO_VIDEO_URL = "https://www.youtube.com/watch?v=4acdVXoPBVM"; // Tempoarbeit - MTMT Blueprint
 
+// Steigerungs-Vorschlag: oberes Ende des Wiederholungsbereichs überall erreicht -> mehr Gewicht
+function suggest(
+    ex: MtmtExercise,
+    weekIdx: number,
+    hist?: { date: string; sets: { weight: number; reps: number }[] }[]
+): string | null {
+    const m = (ex.weeks[weekIdx]?.reps ?? "").match(/(\d+)\s*bis\s*(\d+)/);
+    const last = hist?.[0];
+    if (!m || !last) return null;
+    const upper = parseInt(m[2]);
+    const working = last.sets.filter((s) => s.weight > 0);
+    if (!working.length) return null;
+    const maxW = Math.max(...working.map((s) => s.weight));
+    const minReps = Math.min(...working.filter((s) => s.weight === maxW).map((s) => s.reps));
+    if (minReps >= upper) return `Heute ${(maxW + 2.5).toLocaleString("de-DE")} kg probieren — ${maxW} kg × ${upper} war überall drin`;
+    return `${maxW.toLocaleString("de-DE")} kg halten, Richtung ${upper} Wdh. (zuletzt ${minReps})`;
+}
+
 // Hilfsmittel aus den Übungsnamen ableiten. special = hat nicht jedes Studio.
 const EQUIPMENT: { re: RegExp; label: string; special?: boolean }[] = [
     { re: /Air ?Bike/i, label: "Airbike", special: true },
@@ -128,9 +147,35 @@ export default function MtmtWorkout() {
     const [logs, setLogs] = useState<Record<string, SetLog[]>>({});
     // Pro Übung: die letzten 2 Sessions mit allen Sätzen (z. B. diese + letzte Woche)
     const [history, setHistory] = useState<Record<string, { date: string; sets: { weight: number; reps: number }[] }[]>>({});
+    // Sticky-Notizen pro Übung (z. B. Bank-Einstellung)
+    const [notes, setNotes] = useState<Record<string, string>>({});
+    const [editingNote, setEditingNote] = useState<string | null>(null);
+    const [noteDraft, setNoteDraft] = useState("");
+
+    const saveNote = async (name: string) => {
+        const text = noteDraft.trim();
+        setNotes((p) => ({ ...p, [name]: text }));
+        setEditingNote(null);
+        try {
+            const { data: { user } } = await supabase.auth.getUser();
+            if (!user) return;
+            if (text) {
+                await supabase.from("exercise_notes").upsert(
+                    [{ user_id: user.id, exercise_name: name, note: text, updated_at: new Date().toISOString() }],
+                    { onConflict: "user_id,exercise_name" }
+                );
+            } else {
+                await supabase.from("exercise_notes").delete().eq("user_id", user.id).eq("exercise_name", name);
+            }
+        } catch {}
+    };
     const [saving, setSaving] = useState(false);
     const [newPRs, setNewPRs] = useState<{ name: string; weight: number }[]>([]);
     const [showPRModal, setShowPRModal] = useState(false);
+    const [celebrate, setCelebrate] = useState<{ kind: "week" | "month"; nextMonth: number; nextWeek: number } | null>(null);
+
+    // Offline gespeicherte Sessions nachladen, sobald die Seite (mit Netz) öffnet
+    useEffect(() => { void flushPendingSessions(); }, []);
     const [video, setVideo] = useState<{ url: string; title: string } | null>(null);
     const [sessionDate, setSessionDate] = useState(() => new Date().toISOString().split("T")[0]);
     const timer = useTimer();
@@ -278,6 +323,16 @@ export default function MtmtWorkout() {
                         }));
                 });
                 setHistory(hist);
+                // Notizen zu den Übungen des Tages laden
+                const { data: noteRows } = await supabase
+                    .from("exercise_notes").select("exercise_name, note")
+                    .eq("user_id", user.id)
+                    .in("exercise_name", [...names]);
+                if (noteRows) {
+                    const n: Record<string, string> = {};
+                    noteRows.forEach((r: any) => { n[r.exercise_name] = r.note; });
+                    setNotes(n);
+                }
             } catch (e) { console.error(e); }
         };
         load();
@@ -374,9 +429,46 @@ export default function MtmtWorkout() {
         return best;
     };
 
+    // Satz-Zeilen für die Datenbank aufbereiten (rechte Seite als eigene Zeile hinter links)
+    const buildRows = () => {
+        const rows: { exercise_name: string; weight: number; reps: number; order: number }[] = [];
+        Object.entries(logs).forEach(([name, exSets]) => {
+            let ord = 0;
+            exSets.forEach((set) => {
+                if (set.weight || set.reps || set.reps2) {
+                    ord += 1;
+                    rows.push({ exercise_name: name, weight: set.weight ? parseFloat(set.weight) : 0, reps: set.reps ? parseInt(set.reps) : 0, order: ord });
+                    if (set.reps2) {
+                        ord += 1;
+                        rows.push({ exercise_name: name, weight: 0, reps: parseInt(set.reps2) || 0, order: ord });
+                    }
+                }
+            });
+        });
+        return rows;
+    };
+
+    // Entwurf löschen, Tag abhaken, Fortschritt weiterschalten; meldet Wochen-/Monatsabschluss
+    const finishLocally = (): "week" | "month" | null => {
+        try { localStorage.removeItem(draftKey); } catch {}
+        const before = getMtmtProgress();
+        markMtmtDone({ month: monthNum, week, day: dayNum, date: sessionDate });
+        const after = advanceMtmtProgress(month.days.length);
+        if (after.month !== before.month) {
+            setCelebrate({ kind: "month", nextMonth: after.month, nextWeek: after.week });
+            return "month";
+        }
+        if (after.week !== before.week) {
+            setCelebrate({ kind: "week", nextMonth: after.month, nextWeek: after.week });
+            return "week";
+        }
+        return null;
+    };
+
     const handleFinish = async () => {
+        setSaving(true);
+        const rows = buildRows();
         try {
-            setSaving(true);
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) { alert("Nicht eingeloggt!"); setSaving(false); return; }
 
@@ -387,62 +479,42 @@ export default function MtmtWorkout() {
                 .single();
             if (sessionErr) throw sessionErr;
 
-            const { data: prevSets } = await supabase
-                .from("sets").select("exercise_name, weight, sessions!inner(user_id)")
-                .eq("sessions.user_id", user.id)
-                .not("exercise_name", "is", null);
-            const allTimeBest: Record<string, number> = {};
-            (prevSets || []).forEach((s: any) => {
-                if (s.exercise_name && s.weight != null) {
-                    if (!allTimeBest[s.exercise_name] || s.weight > allTimeBest[s.exercise_name]) allTimeBest[s.exercise_name] = s.weight;
-                }
-            });
-
+            // Bestleistungen ermitteln (best effort — darf das Speichern nie verhindern)
             const prs: { name: string; weight: number }[] = [];
-            const setsToInsert: any[] = [];
-            Object.entries(logs).forEach(([name, exSets]) => {
-                const working = exSets.filter(s => !s.isWarmup && s.weight);
-                const maxNew = working.length ? Math.max(...working.map(s => parseFloat(s.weight))) : 0;
-                if (maxNew > 0 && maxNew > (allTimeBest[name] || 0)) prs.push({ name, weight: maxNew });
-                let ord = 0;
-                exSets.forEach((set) => {
-                    if (set.weight || set.reps || set.reps2) {
-                        ord += 1;
-                        setsToInsert.push({
-                            session_id: session.id,
-                            exercise_name: name,
-                            weight: set.weight ? parseFloat(set.weight) : 0,
-                            reps: set.reps ? parseInt(set.reps) : 0,
-                            order: ord,
-                        });
-                        // rechte Seite als eigene Zeile direkt dahinter (Paare bleiben rekonstruierbar)
-                        if (set.reps2) {
-                            ord += 1;
-                            setsToInsert.push({
-                                session_id: session.id,
-                                exercise_name: name,
-                                weight: 0,
-                                reps: parseInt(set.reps2) || 0,
-                                order: ord,
-                            });
-                        }
+            try {
+                const { data: prevSets } = await supabase
+                    .from("sets").select("exercise_name, weight, sessions!inner(user_id)")
+                    .eq("sessions.user_id", user.id)
+                    .not("exercise_name", "is", null);
+                const allTimeBest: Record<string, number> = {};
+                (prevSets || []).forEach((s: any) => {
+                    if (s.exercise_name && s.weight != null) {
+                        if (!allTimeBest[s.exercise_name] || s.weight > allTimeBest[s.exercise_name]) allTimeBest[s.exercise_name] = s.weight;
                     }
                 });
-            });
-            if (setsToInsert.length > 0) {
-                const { error } = await supabase.from("sets").insert(setsToInsert);
+                Object.entries(logs).forEach(([name, exSets]) => {
+                    const working = exSets.filter(s => !s.isWarmup && s.weight);
+                    const maxNew = working.length ? Math.max(...working.map(s => parseFloat(s.weight))) : 0;
+                    if (maxNew > 0 && maxNew > (allTimeBest[name] || 0)) prs.push({ name, weight: maxNew });
+                });
+            } catch {}
+
+            if (rows.length > 0) {
+                const { error } = await supabase.from("sets").insert(rows.map((r) => ({ ...r, session_id: session.id })));
                 if (error) throw error;
             }
 
-            try { localStorage.removeItem(draftKey); } catch {} // Entwurf ist jetzt richtig gespeichert
-            markMtmtDone({ month: monthNum, week, day: dayNum, date: sessionDate });
-            advanceMtmtProgress(month.days.length);
-
-            if (prs.length > 0) { setNewPRs(prs); setShowPRModal(true); setSaving(false); }
-            else router.push(`/program/${monthNum}`);
-        } catch (err: any) {
-            alert("Fehler: " + err.message);
+            const celeb = finishLocally();
             setSaving(false);
+            if (prs.length > 0) { setNewPRs(prs); setShowPRModal(true); }
+            else if (!celeb) router.push(`/program/${monthNum}`);
+        } catch {
+            // Kein Netz (oder Serverproblem): Training in die Warteschlange — nichts geht verloren
+            queuePendingSession({ date: new Date(sessionDate).toISOString(), sets: rows, queuedAt: Date.now() });
+            const celeb = finishLocally();
+            setSaving(false);
+            alert("Kein Netz — dein Training ist sicher gespeichert und wird automatisch hochgeladen, sobald du wieder online bist.");
+            if (!celeb) router.push(`/program/${monthNum}`);
         }
     };
 
@@ -460,7 +532,38 @@ export default function MtmtWorkout() {
                         </div>
                     ))}
                 </div>
-                <button onClick={() => router.push(`/program/${monthNum}`)} className="btn-primary w-full text-lg mt-4">Weiter</button>
+                <button onClick={() => { if (celebrate) setShowPRModal(false); else router.push(`/program/${monthNum}`); }} className="btn-primary w-full text-lg mt-4">Weiter</button>
+            </div>
+        </div>
+    );
+
+    // Wochen-/Monatsabschluss feiern
+    if (celebrate) return (
+        <div className="flex min-h-screen flex-col items-center justify-center bg-background px-6 text-center">
+            <div className="animate-in zoom-in duration-500 space-y-6 max-w-sm w-full">
+                <svg className="mx-auto h-16 w-16 animate-bounce text-accent" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}><path strokeLinecap="round" strokeLinejoin="round" d="M5 21V4m0 0h11l-2 3.5L16 11H5" /></svg>
+                {celebrate.kind === "month" ? (
+                    <>
+                        <h1 className="text-4xl font-black text-foreground">Monat geschafft!</h1>
+                        <p className="text-sm leading-relaxed text-muted">
+                            <span className="font-bold text-foreground">{month.phase}</span> ist komplett — alle 4 Wochen durchgezogen. Stark!
+                        </p>
+                        <div className="rounded-2xl border border-accent bg-accent/10 p-4">
+                            <p className="text-xs font-black uppercase tracking-widest text-accent">Als Nächstes</p>
+                            <p className="mt-1 text-xl font-black text-foreground">Monat {celebrate.nextMonth} · {getMtmtMonth(celebrate.nextMonth)?.phase ?? ""}</p>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <h1 className="text-4xl font-black text-foreground">Woche geschafft!</h1>
+                        <p className="text-sm leading-relaxed text-muted">Alle Trainings dieser Woche sind durch.</p>
+                        <div className="rounded-2xl border border-accent bg-accent/10 p-4">
+                            <p className="text-xs font-black uppercase tracking-widest text-accent">Als Nächstes</p>
+                            <p className="mt-1 text-xl font-black text-foreground">Woche {celebrate.nextWeek} von 4</p>
+                        </div>
+                    </>
+                )}
+                <button onClick={() => router.push(`/program/${celebrate.nextMonth}`)} className="btn-primary w-full text-lg mt-4">Weiter</button>
             </div>
         </div>
     );
@@ -616,6 +719,30 @@ export default function MtmtWorkout() {
                                                             </div>
                                                         );
                                                     })()}
+                                                    {/* Steigerungs-Vorschlag aus der letzten Session */}
+                                                    {modality === "weight" && (() => {
+                                                        const s = suggest(ex, weekIdx, history[ex.name]);
+                                                        return s ? <p className="mt-1 text-[11px] font-bold text-accent">→ {s}</p> : null;
+                                                    })()}
+                                                    {/* Sticky-Notiz zur Übung */}
+                                                    {editingNote === ex.name ? (
+                                                        <input autoFocus value={noteDraft} onChange={(e) => setNoteDraft(e.target.value)}
+                                                            onKeyDown={(e) => { if (e.key === "Enter") saveNote(ex.name); if (e.key === "Escape") setEditingNote(null); }}
+                                                            onBlur={() => saveNote(ex.name)}
+                                                            placeholder="Notiz (z. B. Bank Stufe 3)"
+                                                            className="mt-1.5 w-full rounded-lg border border-card-border bg-card px-2.5 py-1.5 text-xs text-foreground focus:border-accent focus:outline-none" />
+                                                    ) : notes[ex.name] ? (
+                                                        <button onClick={() => { setNoteDraft(notes[ex.name]); setEditingNote(ex.name); }}
+                                                            className="mt-1.5 flex items-center gap-1.5 text-left text-[11px] italic text-foreground/70 transition-colors hover:text-foreground">
+                                                            <svg className="h-3 w-3 flex-shrink-0 text-muted" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M16.9 4.4a2 2 0 0 1 2.8 2.8L7 20l-4 1 1-4Z" /></svg>
+                                                            {notes[ex.name]}
+                                                        </button>
+                                                    ) : (
+                                                        <button onClick={() => { setNoteDraft(""); setEditingNote(ex.name); }}
+                                                            className="mt-1.5 text-left text-[10px] font-bold uppercase tracking-widest text-muted transition-colors hover:text-accent">
+                                                            + Notiz
+                                                        </button>
+                                                    )}
                                                 </div>
                                                 <div className="flex flex-shrink-0 items-center gap-2">
                                                     {ex.videoUrl && (

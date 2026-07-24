@@ -4,6 +4,7 @@ import Link from "next/link";
 import { useEffect, useState } from "react";
 import { supabase } from "@/lib/supabaseClient";
 import { getMtmtDone, getMtmtProgress, isMtmtDone, MtmtDoneEntry, MtmtProgress, syncMtmtState } from "@/lib/mtmtProgress";
+import { flushPendingSessions } from "@/lib/pendingSessions";
 import { getMtmtMonth } from "@/data/mtmt";
 
 // Reduzierte, einfarbige Icons (Linienstil wie die übrige App)
@@ -53,6 +54,8 @@ export default function Dashboard() {
         setMtmtDone(getMtmtDone());
         // Häkchen + Monat/Woche mit der Cloud abgleichen (Handy <-> PC)
         syncMtmtState().then(({ progress, done }) => { setMtmt(progress); setMtmtDone(done); });
+        // offline gespeicherte Trainings nachladen
+        void flushPendingSessions();
         const load = async () => {
             const { data: { user } } = await supabase.auth.getUser();
             if (!user) return;

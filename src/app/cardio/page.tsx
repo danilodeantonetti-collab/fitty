@@ -116,6 +116,26 @@ export default function CardioPage() {
     const [km, setKm] = useState("");
     const [minutes, setMinutes] = useState("");
     const [route, setRoute] = useState("");
+    // Wochenziel in km (optional)
+    const [goalKm, setGoalKm] = useState<number | null>(null);
+    const [editingGoal, setEditingGoal] = useState(false);
+    const [goalDraft, setGoalDraft] = useState("");
+
+    useEffect(() => {
+        try {
+            const g = parseFloat(localStorage.getItem("fitty_bike_goal_km") ?? "");
+            if (g > 0) setGoalKm(g);
+        } catch {}
+    }, []);
+
+    const saveGoal = () => {
+        const g = parseFloat(goalDraft.replace(",", "."));
+        setEditingGoal(false);
+        try {
+            if (g > 0) { setGoalKm(g); localStorage.setItem("fitty_bike_goal_km", String(g)); }
+            else { setGoalKm(null); localStorage.removeItem("fitty_bike_goal_km"); }
+        } catch {}
+    };
 
     useEffect(() => {
         const load = async () => {
@@ -183,17 +203,50 @@ export default function CardioPage() {
 
             <main className="mx-auto max-w-lg space-y-6 px-6 pt-8">
                 {/* Wochenstatus */}
-                <div className={`flex items-center justify-between rounded-2xl border p-5 ${thisWeek.length ? "border-accent/50 bg-accent/10" : "border-card-border bg-card-border/20"}`}>
-                    <div>
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Diese Woche</p>
-                        <p className={`text-xl font-black ${thisWeek.length ? "text-accent" : "text-foreground"}`}>
-                            {thisWeek.length ? `Erledigt ✓${thisWeek.length > 1 ? ` (${thisWeek.length}×)` : ""}` : "Noch offen"}
-                        </p>
+                <div className={`rounded-2xl border p-5 ${thisWeek.length ? "border-accent/50 bg-accent/10" : "border-card-border bg-card-border/20"}`}>
+                    <div className="flex items-center justify-between">
+                        <div>
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Diese Woche</p>
+                            <p className={`text-xl font-black ${thisWeek.length ? "text-accent" : "text-foreground"}`}>
+                                {thisWeek.length ? `Erledigt ✓${thisWeek.length > 1 ? ` (${thisWeek.length}×)` : ""}` : "Noch offen"}
+                            </p>
+                        </div>
+                        <div className="text-right">
+                            <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Gesamt</p>
+                            <p className="text-xl font-black text-foreground">{totalKm} <span className="text-sm text-muted">km</span></p>
+                        </div>
                     </div>
-                    <div className="text-right">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-muted">Gesamt</p>
-                        <p className="text-xl font-black text-foreground">{totalKm} <span className="text-sm text-muted">km</span></p>
-                    </div>
+                    {/* Wochenziel */}
+                    {(() => {
+                        const weekKm = Math.round(thisWeek.reduce((s, e) => s + (e.distance_km ?? 0), 0) * 10) / 10;
+                        if (editingGoal) return (
+                            <div className="mt-3 flex items-center gap-2 border-t border-card-border pt-3">
+                                <input autoFocus type="number" inputMode="decimal" placeholder="Ziel km/Woche" value={goalDraft}
+                                    onChange={(e) => setGoalDraft(e.target.value)}
+                                    onKeyDown={(e) => { if (e.key === "Enter") saveGoal(); if (e.key === "Escape") setEditingGoal(false); }}
+                                    onBlur={saveGoal}
+                                    className="w-full flex-1 rounded-lg border border-card-border bg-card px-2.5 py-1.5 text-xs font-bold text-foreground focus:border-accent focus:outline-none" />
+                            </div>
+                        );
+                        if (!goalKm) return (
+                            <button onClick={() => { setGoalDraft(""); setEditingGoal(true); }}
+                                className="mt-3 w-full border-t border-card-border pt-3 text-left text-[10px] font-bold uppercase tracking-widest text-muted transition-colors hover:text-accent">
+                                + Wochenziel setzen (km)
+                            </button>
+                        );
+                        return (
+                            <button onClick={() => { setGoalDraft(String(goalKm)); setEditingGoal(true); }} className="mt-3 w-full border-t border-card-border pt-3 text-left">
+                                <div className="mb-1.5 flex items-baseline justify-between">
+                                    <span className="text-[10px] font-bold uppercase tracking-widest text-muted">Wochenziel</span>
+                                    <span className="text-[11px] font-black text-foreground">{weekKm} / {goalKm} km</span>
+                                </div>
+                                <div className="h-2 w-full overflow-hidden rounded-full bg-background">
+                                    <div className={`h-full rounded-full transition-all duration-700 ${weekKm >= goalKm ? "bg-accent" : "bg-accent/60"}`}
+                                        style={{ width: `${Math.min(100, (weekKm / goalKm) * 100)}%` }} />
+                                </div>
+                            </button>
+                        );
+                    })()}
                 </div>
 
                 {/* Eintragen */}

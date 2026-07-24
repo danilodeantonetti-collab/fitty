@@ -63,6 +63,41 @@ export default function AccountPage() {
     }, [router]);
 
     const handleSignOut = async () => { await supabase.auth.signOut(); router.push('/auth/login'); };
+
+    // Alle eigenen Daten als CSV herunterladen (Trainings, Gewicht, Rad)
+    const [exporting, setExporting] = useState(false);
+    const exportCsv = async () => {
+        setExporting(true);
+        try {
+            const { data: { user: u } } = await supabase.auth.getUser();
+            if (!u) return;
+            const { data: sessions } = await supabase
+                .from('sessions').select('id, date, sets ( exercise_name, weight, reps, "order", exercises ( name ) )')
+                .eq('user_id', u.id).order('date', { ascending: true });
+            const { data: bw } = await supabase.from('body_weight').select('date, weight').eq('user_id', u.id).order('date');
+            const { data: rides } = await supabase.from('cardio_sessions').select('date, distance_km, duration_min, route').eq('user_id', u.id).order('date');
+            const clean = (s: any) => String(s ?? '').replace(/;/g, ',');
+            const lines = ['typ;datum;uebung;gewicht_kg;wiederholungen;distanz_km;dauer_min;strecke;koerpergewicht_kg'];
+            (sessions ?? []).forEach((s: any) => {
+                const d = new Date(s.date).toISOString().slice(0, 10);
+                (s.sets ?? []).sort((a: any, b: any) => (a.order ?? 0) - (b.order ?? 0)).forEach((x: any) => {
+                    lines.push(['training', d, clean(x.exercises?.name ?? x.exercise_name), x.weight ?? '', x.reps ?? '', '', '', '', ''].join(';'));
+                });
+            });
+            (bw ?? []).forEach((b: any) => lines.push(['gewicht', b.date, '', '', '', '', '', '', b.weight].join(';')));
+            (rides ?? []).forEach((r: any) => lines.push(['rad', r.date, '', '', '', r.distance_km ?? '', r.duration_min ?? '', clean(r.route), ''].join(';')));
+            const blob = new Blob(['﻿' + lines.join('\r\n')], { type: 'text/csv;charset=utf-8' });
+            const a = document.createElement('a');
+            a.href = URL.createObjectURL(blob);
+            a.download = `fitty-export-${new Date().toISOString().slice(0, 10)}.csv`;
+            a.click();
+            URL.revokeObjectURL(a.href);
+        } catch (e) {
+            alert('Export fehlgeschlagen: ' + (e as Error).message);
+        } finally {
+            setExporting(false);
+        }
+    };
     if (loading) return <div className="flex h-screen items-center justify-center bg-black text-accent font-bold">Laden...</div>;
 
     return (
@@ -140,6 +175,11 @@ export default function AccountPage() {
                     <div className="flex justify-between py-3 border-b border-card-border"><span className="text-sm text-muted">E-Mail</span><span className="text-sm font-bold text-foreground truncate max-w-[60%] text-right">{user?.email}</span></div>
                     <div className="flex justify-between py-3"><span className="text-sm text-muted">Mitglied seit</span><span className="text-sm font-bold text-foreground">{new Date(user?.created_at).toLocaleDateString('de-DE', { year: 'numeric', month: 'long', day: 'numeric' })}</span></div>
                 </div>
+
+                <button onClick={exportCsv} disabled={exporting}
+                    className="w-full rounded-2xl border border-card-border bg-card-border/20 py-4 text-sm font-bold text-foreground transition-all hover:border-accent hover:text-accent active:scale-[0.98] disabled:opacity-50">
+                    {exporting ? 'Exportiere…' : 'Daten als CSV exportieren'}
+                </button>
 
                 <button onClick={handleSignOut} className="w-full rounded-2xl border border-red-500/30 bg-red-500/10 py-4 text-sm font-bold text-red-400 transition-all hover:bg-red-500/20 active:scale-[0.98]">Abmelden</button>
             </main>
