@@ -9,7 +9,7 @@ import { advanceMtmtProgress, getMtmtProgress, markMtmtDone, setMtmtProgress, sy
 import { useTimer } from "@/context/TimerContext";
 import VideoModal from "@/components/VideoModal";
 
-interface SetLog { reps: string; weight: string; isWarmup?: boolean; done?: boolean; }
+interface SetLog { reps: string; weight: string; reps2?: string; isWarmup?: boolean; done?: boolean; } // reps2 = rechte Seite bei "/ Seite"-Übungen
 
 const calc1RM = (weight: number, reps: number) => reps === 1 ? weight : Math.round(weight * (1 + reps / 30));
 
@@ -37,6 +37,9 @@ const hasImplement = (name: string) =>
 
 const isBodyweight = (name: string) =>
     /Push ?Up|Klimmzug|Pull ?Up\b|Ring Rows|an Ringen|mit Festhalten|Körpergewicht|Step Overs|^Lateral Lunge$|^Skater Squat mit Festhalten$/i.test(name);
+
+// "pro Seite"-Übungen bekommen Links/Rechts-Felder (außer bei Gewichtsübungen)
+const isSideTarget = (ex: MtmtExercise, weekIdx: number) => /\/\s*Seite/i.test(ex.weeks[weekIdx]?.reps ?? "");
 
 function exModality(ex: MtmtExercise, weekIdx: number, sectionTitle?: string): Modality {
     const t = ex.weeks[weekIdx]?.reps ?? "";
@@ -141,13 +144,19 @@ export default function MtmtWorkout() {
         return () => clearInterval(iv);
     }, [watch !== null]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const toggleWatch = (name: string, idx: number) => {
+    const toggleWatch = (name: string, idx: number, side: boolean) => {
         if (watch && watch.name === name && watch.idx === idx) {
             const secs = Math.max(1, Math.round((Date.now() - watch.start) / 1000));
             setLogs((p) => {
                 const n = { ...p };
                 n[name] = [...n[name]];
-                n[name][idx] = { ...n[name][idx], reps: String(secs), done: true };
+                const cur = n[name][idx];
+                if (side && cur.reps && !cur.reps2) {
+                    // zweiter Durchgang -> rechte Seite, dann ist der Satz komplett
+                    n[name][idx] = { ...cur, reps2: String(secs), done: true };
+                } else {
+                    n[name][idx] = { ...cur, reps: String(secs), done: !side };
+                }
                 return n;
             });
             setWatch(null);
@@ -276,15 +285,35 @@ export default function MtmtWorkout() {
 
     // Werte der letzten Session in die Eingabefelder übernehmen
     const fillFromLast = () => {
+        // welche Übungen sind Links/Rechts-Übungen? (Paare wieder zusammensetzen)
+        const sideNames = new Set<string>();
+        day?.sections.forEach((sec) =>
+            sec.exercises.forEach((e) => {
+                const m = exModality(e, week - 1, sec.title);
+                if (isSideTarget(e, week - 1) && (m === "time" || m === "reps" || m === "breath")) sideNames.add(e.name);
+            })
+        );
         setLogs((prev) => {
             const next: Record<string, SetLog[]> = { ...prev };
             Object.entries(history).forEach(([name, hs]) => {
                 const last = hs[0];
                 if (!last?.sets.length) return;
-                next[name] = last.sets.map((s) => ({
-                    weight: s.weight ? String(s.weight) : "",
-                    reps: s.reps ? String(s.reps) : "",
-                }));
+                if (sideNames.has(name)) {
+                    const rows: SetLog[] = [];
+                    for (let i = 0; i < last.sets.length; i += 2) {
+                        rows.push({
+                            weight: "",
+                            reps: last.sets[i]?.reps ? String(last.sets[i].reps) : "",
+                            reps2: last.sets[i + 1]?.reps ? String(last.sets[i + 1].reps) : "",
+                        });
+                    }
+                    next[name] = rows;
+                } else {
+                    next[name] = last.sets.map((s) => ({
+                        weight: s.weight ? String(s.weight) : "",
+                        reps: s.reps ? String(s.reps) : "",
+                    }));
+                }
             });
             return next;
         });
@@ -308,7 +337,7 @@ export default function MtmtWorkout() {
 
     const addSet = (name: string) => setLogs(p => ({ ...p, [name]: [...(p[name] || []), { reps: "", weight: "" }] }));
     const addWarmup = (name: string) => setLogs(p => ({ ...p, [name]: [{ reps: "", weight: "", isWarmup: true }, ...(p[name] || [])] }));
-    const updateSet = (name: string, idx: number, field: "weight" | "reps", value: string) =>
+    const updateSet = (name: string, idx: number, field: "weight" | "reps" | "reps2", value: string) =>
         setLogs(p => { const n = { ...p }; n[name] = [...n[name]]; n[name][idx] = { ...n[name][idx], [field]: value }; return n; });
     const removeSet = (name: string, idx: number) => setLogs(p => ({ ...p, [name]: p[name].filter((_, i) => i !== idx) }));
 
@@ -375,15 +404,28 @@ export default function MtmtWorkout() {
                 const working = exSets.filter(s => !s.isWarmup && s.weight);
                 const maxNew = working.length ? Math.max(...working.map(s => parseFloat(s.weight))) : 0;
                 if (maxNew > 0 && maxNew > (allTimeBest[name] || 0)) prs.push({ name, weight: maxNew });
-                exSets.forEach((set, idx) => {
-                    if (set.weight || set.reps) {
+                let ord = 0;
+                exSets.forEach((set) => {
+                    if (set.weight || set.reps || set.reps2) {
+                        ord += 1;
                         setsToInsert.push({
                             session_id: session.id,
                             exercise_name: name,
                             weight: set.weight ? parseFloat(set.weight) : 0,
                             reps: set.reps ? parseInt(set.reps) : 0,
-                            order: idx + 1,
+                            order: ord,
                         });
+                        // rechte Seite als eigene Zeile direkt dahinter (Paare bleiben rekonstruierbar)
+                        if (set.reps2) {
+                            ord += 1;
+                            setsToInsert.push({
+                                session_id: session.id,
+                                exercise_name: name,
+                                weight: 0,
+                                reps: parseInt(set.reps2) || 0,
+                                order: ord,
+                            });
+                        }
                     }
                 });
             });
@@ -514,6 +556,7 @@ export default function MtmtWorkout() {
                                     const target = ex.weeks[weekIdx];
                                     const rm = get1RM(ex.name);
                                     const modality = exModality(ex, weekIdx, sec.title);
+                                    const side = isSideTarget(ex, weekIdx) && (modality === "time" || modality === "reps" || modality === "breath");
                                     return (
                                         <div key={ex.id + ex.name}>
                                             <div className="flex items-start justify-between border-b border-accent/20 pb-2 gap-2">
@@ -534,13 +577,23 @@ export default function MtmtWorkout() {
                                                             {history[ex.name].map((h) => (
                                                                 <p key={h.date} className="text-[11px] font-bold text-muted">
                                                                     <span className="text-foreground/60">{new Date(h.date).toLocaleDateString("de-DE", { day: "2-digit", month: "2-digit" })}:</span>{" "}
-                                                                    {h.sets.map((s) => {
-                                                                        if (modality === "time") return `${s.reps}s`;
-                                                                        if (modality === "cal") return `${s.reps} kcal`;
-                                                                        if (modality === "intervalWeight") return `${s.weight}kg`;
-                                                                        if (modality === "weight" && s.weight) return `${s.weight}×${s.reps}`;
-                                                                        return `${s.reps}`;
-                                                                    }).join(" · ")}
+                                                                    {(() => {
+                                                                        const one = (s: { weight: number; reps: number }) => {
+                                                                            if (modality === "time") return `${s.reps}s`;
+                                                                            if (modality === "cal") return `${s.reps} kcal`;
+                                                                            if (modality === "intervalWeight") return s.reps ? `${s.weight}kg×${s.reps}` : `${s.weight}kg`;
+                                                                            if (modality === "weight" && s.weight) return `${s.weight}×${s.reps}`;
+                                                                            return `${s.reps}`;
+                                                                        };
+                                                                        if (!side) return h.sets.map(one).join(" · ");
+                                                                        // Links/Rechts-Paare (L|R)
+                                                                        const parts: string[] = [];
+                                                                        for (let i = 0; i < h.sets.length; i += 2) {
+                                                                            const l = h.sets[i], r = h.sets[i + 1];
+                                                                            parts.push(r ? `${one(l)}|${one(r)}` : one(l));
+                                                                        }
+                                                                        return parts.join(" · ");
+                                                                    })()}
                                                                 </p>
                                                             ))}
                                                         </div>
@@ -591,9 +644,16 @@ export default function MtmtWorkout() {
                                                             </div>
                                                         )}
                                                         {modality === "reps" && (
-                                                            <div className="flex-1">
-                                                                <input type="number" placeholder="REPS" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
-                                                            </div>
+                                                            side ? (
+                                                                <div className="grid flex-1 grid-cols-2 gap-3">
+                                                                    <input type="number" placeholder="LINKS" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
+                                                                    <input type="number" placeholder="RECHTS" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps2 ?? ""} onChange={(e) => updateSet(ex.name, idx, "reps2", e.target.value)} />
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex-1">
+                                                                    <input type="number" placeholder="REPS" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
+                                                                </div>
+                                                            )
                                                         )}
                                                         {modality === "cal" && (
                                                             <div className="flex-1">
@@ -601,31 +661,49 @@ export default function MtmtWorkout() {
                                                             </div>
                                                         )}
                                                         {modality === "intervalWeight" && (
-                                                            <div className="flex-1">
+                                                            <div className="grid flex-1 grid-cols-2 gap-3">
                                                                 <input type="number" placeholder="KG" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.weight} onChange={(e) => updateSet(ex.name, idx, "weight", e.target.value)} />
+                                                                <input type="number" placeholder="REPS" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
                                                             </div>
                                                         )}
                                                         {modality === "check" && (
                                                             <p className="flex-1 text-center text-[10px] font-bold uppercase tracking-widest text-muted">Runde {idx + 1} — abhaken</p>
                                                         )}
                                                         {modality === "breath" && (
-                                                            <div className="flex-1">
-                                                                <input type="number" placeholder="ATEMZÜGE" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
-                                                            </div>
+                                                            side ? (
+                                                                <div className="grid flex-1 grid-cols-2 gap-3">
+                                                                    <input type="number" placeholder="LINKS" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
+                                                                    <input type="number" placeholder="RECHTS" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps2 ?? ""} onChange={(e) => updateSet(ex.name, idx, "reps2", e.target.value)} />
+                                                                </div>
+                                                            ) : (
+                                                                <div className="flex-1">
+                                                                    <input type="number" placeholder="ATEMZÜGE" className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
+                                                                </div>
+                                                            )
                                                         )}
                                                         {modality === "time" && (() => {
                                                             const running = watch && watch.name === ex.name && watch.idx === idx;
                                                             const live = running ? Math.round((watch!.now - watch!.start) / 1000) : 0;
                                                             return (
                                                                 <div className="flex flex-1 items-center gap-3">
-                                                                    <input type="number" placeholder="SEK." className="w-full flex-1 rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
-                                                                    <button onClick={() => toggleWatch(ex.name, idx)}
-                                                                        aria-label={running ? "Stoppuhr stoppen und Zeit speichern" : "Stoppuhr starten"}
+                                                                    {side ? (
+                                                                        <div className="grid flex-1 grid-cols-2 gap-2">
+                                                                            <input type="number" placeholder="L SEK." className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
+                                                                            <input type="number" placeholder="R SEK." className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps2 ?? ""} onChange={(e) => updateSet(ex.name, idx, "reps2", e.target.value)} />
+                                                                        </div>
+                                                                    ) : (
+                                                                        <input type="number" placeholder="SEK." className="w-full flex-1 rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
+                                                                    )}
+                                                                    <button onClick={() => toggleWatch(ex.name, idx, side)}
+                                                                        aria-label={running ? "Stoppuhr stoppen und Zeit speichern" : side && set.reps ? "Stoppuhr für rechte Seite starten" : "Stoppuhr starten"}
                                                                         className={`flex h-11 min-w-[3.5rem] flex-shrink-0 items-center justify-center gap-1 rounded-xl border px-2 text-sm font-black tabular-nums transition-all active:scale-95 ${running ? "border-accent bg-accent text-background" : "border-card-border bg-card text-accent"}`}>
                                                                         {running ? (
                                                                             <>{live}s</>
                                                                         ) : (
-                                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l2.5 2.5M12 6a7 7 0 1 0 0 14 7 7 0 0 0 0-14ZM10 3h4" /></svg>
+                                                                            <span className="flex items-center gap-1">
+                                                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l2.5 2.5M12 6a7 7 0 1 0 0 14 7 7 0 0 0 0-14ZM10 3h4" /></svg>
+                                                                                {side && <span className="text-[9px]">{set.reps && !set.reps2 ? "R" : "L"}</span>}
+                                                                            </span>
                                                                         )}
                                                                     </button>
                                                                 </div>
