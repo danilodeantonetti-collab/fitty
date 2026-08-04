@@ -27,20 +27,31 @@ function sectionInterval(sec: MtmtSection, weekIdx: number): { work: number; res
 
 const REST_CHOICES = [60, 90, 120, 180];
 
-// Einstellbarer Intervall-Start: Arbeit/Pause aus dem Plan vorbelegt, aber änderbar
-// (z. B. 30s an / 15s aus statt 30/30). Die Wahl wird pro Muster gemerkt.
+// Einstellbarer Intervall-Start. Arbeit kommt aus dem Plan; die Pause steht
+// standardmäßig auf dem persönlichen Wunsch (Default 15 Sek.), änderbar und
+// global gemerkt (einmal einstellen -> gilt für alle Intervalle).
+const DEFAULT_REST = 15;
 function IntervalControl({ work, rest, onStart }: { work: number; rest: number; onStart: (w: number, r: number) => void }) {
     const key = `fitty_interval_${work}_${rest}`;
     const [w, setW] = useState(work);
-    const [r, setR] = useState(rest);
+    const [r, setR] = useState(DEFAULT_REST);
     useEffect(() => {
         try {
+            // 1) globaler Pausen-Wunsch (gilt überall)
+            const g = parseInt(localStorage.getItem("fitty_interval_rest") ?? "");
+            if (g >= 0) setR(g);
+            // 2) spezielle Merkung für genau dieses Muster hat Vorrang
             const s = JSON.parse(localStorage.getItem(key) || "null");
             if (s && s.work >= 1) setW(s.work);
             if (s && s.rest >= 0) setR(s.rest);
         } catch {}
     }, [key]);
-    const remember = (nw: number, nr: number) => { try { localStorage.setItem(key, JSON.stringify({ work: nw, rest: nr })); } catch {} };
+    const remember = (nw: number, nr: number) => {
+        try {
+            localStorage.setItem(key, JSON.stringify({ work: nw, rest: nr }));
+            localStorage.setItem("fitty_interval_rest", String(nr)); // Pause auch global merken
+        } catch {}
+    };
     const clamp = (v: number) => Math.max(0, Math.min(3600, v || 0));
     return (
         <div className="flex items-center gap-1.5 rounded-full bg-accent/10 px-1.5 py-1 text-accent">
