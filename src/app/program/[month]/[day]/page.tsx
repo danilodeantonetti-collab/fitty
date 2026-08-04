@@ -27,6 +27,40 @@ function sectionInterval(sec: MtmtSection, weekIdx: number): { work: number; res
 
 const REST_CHOICES = [60, 90, 120, 180];
 
+// Einstellbarer Intervall-Start: Arbeit/Pause aus dem Plan vorbelegt, aber änderbar
+// (z. B. 30s an / 15s aus statt 30/30). Die Wahl wird pro Muster gemerkt.
+function IntervalControl({ work, rest, onStart }: { work: number; rest: number; onStart: (w: number, r: number) => void }) {
+    const key = `fitty_interval_${work}_${rest}`;
+    const [w, setW] = useState(work);
+    const [r, setR] = useState(rest);
+    useEffect(() => {
+        try {
+            const s = JSON.parse(localStorage.getItem(key) || "null");
+            if (s && s.work >= 1) setW(s.work);
+            if (s && s.rest >= 0) setR(s.rest);
+        } catch {}
+    }, [key]);
+    const remember = (nw: number, nr: number) => { try { localStorage.setItem(key, JSON.stringify({ work: nw, rest: nr })); } catch {} };
+    const clamp = (v: number) => Math.max(0, Math.min(3600, v || 0));
+    return (
+        <div className="flex items-center gap-1.5 rounded-full bg-accent/10 px-1.5 py-1 text-accent">
+            <span className="pl-1 text-[10px] font-black uppercase">Int.</span>
+            <input type="number" aria-label="Arbeit Sekunden" value={w}
+                onChange={(e) => { const v = clamp(parseInt(e.target.value)); setW(v); remember(v, r); }}
+                className="w-9 rounded-md bg-background/60 px-1 py-0.5 text-center text-xs font-bold text-foreground focus:outline-none" />
+            <span className="text-[9px] font-bold">an</span>
+            <input type="number" aria-label="Pause Sekunden" value={r}
+                onChange={(e) => { const v = clamp(parseInt(e.target.value)); setR(v); remember(w, v); }}
+                className="w-9 rounded-md bg-background/60 px-1 py-0.5 text-center text-xs font-bold text-foreground focus:outline-none" />
+            <span className="text-[9px] font-bold">aus</span>
+            <button onClick={() => onStart(w, r)} aria-label="Intervall starten"
+                className="ml-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-accent text-background transition-transform active:scale-90">
+                <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
+            </button>
+        </div>
+    );
+}
+
 // Wie wird die Übung gemessen? (aus Audit aller 318 Übungen abgeleitet)
 // weight = KG×Reps · reps = nur Reps (Körpergewicht) · time = Sekunden+Stoppuhr
 // breath = Atemzüge · cal = Kalorien (Finisher) · intervalWeight = Intervall mit
@@ -256,8 +290,9 @@ export default function MtmtWorkout() {
     const [sessionDate, setSessionDate] = useState(() => new Date().toISOString().split("T")[0]);
     const timer = useTimer();
     const [restSeconds, setRestSeconds] = useState(90);
-    // Stoppuhr für Zeit-Übungen (eine gleichzeitig): gestoppte Sekunden landen im Satz
-    const [watch, setWatch] = useState<{ name: string; idx: number; start: number; now: number } | null>(null);
+    // Stoppuhr für Zeit-Übungen (eine gleichzeitig). Jede Seite (reps/reps2) hat
+    // ihren eigenen Knopf -> vorausgefüllte Werte stören das Messen nicht mehr.
+    const [watch, setWatch] = useState<{ name: string; idx: number; field: "reps" | "reps2"; start: number; now: number } | null>(null);
 
     useEffect(() => {
         if (!watch) return;
@@ -265,24 +300,20 @@ export default function MtmtWorkout() {
         return () => clearInterval(iv);
     }, [watch !== null]); // eslint-disable-line react-hooks/exhaustive-deps
 
-    const toggleWatch = (name: string, idx: number, side: boolean) => {
-        if (watch && watch.name === name && watch.idx === idx) {
+    const toggleWatch = (name: string, idx: number, field: "reps" | "reps2", side: boolean) => {
+        if (watch && watch.name === name && watch.idx === idx && watch.field === field) {
             const secs = Math.max(1, Math.round((Date.now() - watch.start) / 1000));
             setLogs((p) => {
                 const n = { ...p };
                 n[name] = [...n[name]];
-                const cur = n[name][idx];
-                if (side && cur.reps && !cur.reps2) {
-                    // zweiter Durchgang -> rechte Seite, dann ist der Satz komplett
-                    n[name][idx] = { ...cur, reps2: String(secs), done: true };
-                } else {
-                    n[name][idx] = { ...cur, reps: String(secs), done: !side };
-                }
+                const cur = { ...n[name][idx], [field]: String(secs) };
+                cur.done = side ? !!cur.reps && !!cur.reps2 : !!cur.reps; // Satz fertig, wenn alle Seiten stehen
+                n[name][idx] = cur;
                 return n;
             });
             setWatch(null);
         } else {
-            setWatch({ name, idx, start: Date.now(), now: Date.now() });
+            setWatch({ name, idx, field, start: Date.now(), now: Date.now() });
         }
     };
 
@@ -756,13 +787,7 @@ export default function MtmtWorkout() {
                                         {(() => {
                                             const iv = sectionInterval(sec, weekIdx);
                                             if (!iv) return null;
-                                            return (
-                                                <button onClick={() => timer.startIntervals(iv.work, iv.rest)}
-                                                    className="flex items-center gap-1 rounded-full bg-accent px-2.5 py-1 font-black text-background transition-transform active:scale-95">
-                                                    <svg className="h-3 w-3" fill="currentColor" viewBox="0 0 24 24"><path d="M8 5v14l11-7z" /></svg>
-                                                    {iv.work}/{iv.rest}
-                                                </button>
-                                            );
+                                            return <IntervalControl work={iv.work} rest={iv.rest} onStart={(w, r) => timer.startIntervals(w, r)} />;
                                         })()}
                                     </div>
                                 )}
@@ -923,38 +948,49 @@ export default function MtmtWorkout() {
                                                             )
                                                         )}
                                                         {modality === "time" && (() => {
-                                                            const running = watch && watch.name === ex.name && watch.idx === idx;
-                                                            const live = running ? Math.round((watch!.now - watch!.start) / 1000) : 0;
-                                                            return (
-                                                                <div className="flex flex-1 items-center gap-3">
-                                                                    {side ? (
-                                                                        <div className="grid flex-1 grid-cols-2 gap-2">
-                                                                            <input type="number" placeholder="L SEK." className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
-                                                                            <input type="number" placeholder="R SEK." className="w-full rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps2 ?? ""} onChange={(e) => updateSet(ex.name, idx, "reps2", e.target.value)} />
-                                                                        </div>
-                                                                    ) : (
-                                                                        <input type="number" placeholder="SEK." className="w-full flex-1 rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
-                                                                    )}
-                                                                    <button onClick={() => toggleWatch(ex.name, idx, side)}
-                                                                        aria-label={running ? "Stoppuhr stoppen und Zeit speichern" : side && set.reps ? "Stoppuhr für rechte Seite starten" : "Stoppuhr starten"}
-                                                                        className={`flex h-11 min-w-[3.5rem] flex-shrink-0 items-center justify-center gap-1 rounded-xl border px-2 text-sm font-black tabular-nums transition-all active:scale-95 ${running ? "border-accent bg-accent text-background" : "border-card-border bg-card text-accent"}`}>
-                                                                        {running ? (
-                                                                            <>{live}s</>
-                                                                        ) : (
-                                                                            <span className="flex items-center gap-1">
-                                                                                <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l2.5 2.5M12 6a7 7 0 1 0 0 14 7 7 0 0 0 0-14ZM10 3h4" /></svg>
-                                                                                {side && <span className="text-[9px]">{set.reps && !set.reps2 ? "R" : "L"}</span>}
-                                                                            </span>
+                                                            const watchBtn = (field: "reps" | "reps2", label: string) => {
+                                                                const running = watch && watch.name === ex.name && watch.idx === idx && watch.field === field;
+                                                                const live = running ? Math.round((watch!.now - watch!.start) / 1000) : 0;
+                                                                return (
+                                                                    <button onClick={() => toggleWatch(ex.name, idx, field, side)}
+                                                                        aria-label={running ? "Stoppuhr stoppen und Zeit speichern" : `Stoppuhr starten${label ? " " + label : ""}`}
+                                                                        className={`flex h-11 min-w-[2.75rem] flex-shrink-0 items-center justify-center gap-1 rounded-xl border px-2 text-sm font-black tabular-nums transition-all active:scale-95 ${running ? "border-accent bg-accent text-background" : "border-card-border bg-card text-accent"}`}>
+                                                                        {running ? <>{live}s</> : (
+                                                                            <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M12 8v4l2.5 2.5M12 6a7 7 0 1 0 0 14 7 7 0 0 0 0-14ZM10 3h4" /></svg>
                                                                         )}
                                                                     </button>
+                                                                );
+                                                            };
+                                                            if (side) return (
+                                                                <div className="grid flex-1 grid-cols-2 gap-2">
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <input type="number" placeholder="L SEK." className="w-full min-w-0 rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
+                                                                        {watchBtn("reps", "links")}
+                                                                    </div>
+                                                                    <div className="flex items-center gap-1.5">
+                                                                        <input type="number" placeholder="R SEK." className="w-full min-w-0 rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps2 ?? ""} onChange={(e) => updateSet(ex.name, idx, "reps2", e.target.value)} />
+                                                                        {watchBtn("reps2", "rechts")}
+                                                                    </div>
+                                                                </div>
+                                                            );
+                                                            return (
+                                                                <div className="flex flex-1 items-center gap-3">
+                                                                    <input type="number" placeholder="SEK." className="w-full flex-1 rounded-xl border border-card-border bg-card p-3 text-center text-sm font-bold text-foreground focus:border-accent focus:outline-none transition-all" value={set.reps} onChange={(e) => updateSet(ex.name, idx, "reps", e.target.value)} />
+                                                                    {watchBtn("reps", "")}
                                                                 </div>
                                                             );
                                                         })()}
-                                                        <button onClick={() => removeSet(ex.name, idx)} className="text-muted hover:text-red-400 transition-colors p-1">
+                                                        <button onClick={() => removeSet(ex.name, idx)} aria-label="Satz entfernen" className="text-muted hover:text-red-400 transition-colors p-1">
                                                             <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                                                         </button>
                                                     </div>
                                                 ))}
+                                                {/* Immer erreichbar: Satz hinzufügen (auch wenn alle entfernt wurden) */}
+                                                <button onClick={() => addSet(ex.name)}
+                                                    className="flex w-full items-center justify-center gap-2 rounded-xl border border-dashed border-card-border py-2.5 text-[11px] font-black uppercase tracking-widest text-muted transition-colors hover:border-accent hover:text-accent">
+                                                    <svg className="h-3.5 w-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2.5}><path strokeLinecap="round" strokeLinejoin="round" d="M12 4v16m8-8H4" /></svg>
+                                                    Satz hinzufügen
+                                                </button>
                                             </div>
                                         </div>
                                     );
